@@ -2266,6 +2266,7 @@ def f_tab_network(module_key, selected_day):
         "Mode",
         ["Growth", "Drop"],
         horizontal=True
+        key=f"{module_key}_analysis_mode_radio"
     )
 
     comparison_modes = generate_comparison_modes(target_day)
