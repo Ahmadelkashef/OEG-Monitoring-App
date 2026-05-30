@@ -2475,7 +2475,7 @@ def load_data():
 
 
         RCH_SITES_PER_DAY_HIST = pd.read_parquet(f"{RECHARGE_DIR}RCH_SITES_PER_DAY_HIST.parquet")
-        RCH_SITES_PER_DAY_HIST = RCH_SITES_PER_DAY_HIST.rename(columns={"RCH_DAY": "unified_date"})
+        RCH_SITES_PER_DAY_HIST = RCH_SITES_PER_DAY_HIST.rename(columns={"rch_day": "unified_date"})
         RCH_SITES_PER_DAY_HIST['unified_date'] = pd.to_datetime(RCH_SITES_PER_DAY_HIST['unified_date'])
 
 
