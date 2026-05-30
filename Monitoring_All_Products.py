@@ -3626,7 +3626,7 @@ with main_tab_voice:
     ]
 
     if not curr_row.empty and not prev_row.empty:
-        cols = st.columns(4)
+        cols = st.columns(5)
         for i, (name, col_name) in enumerate(DATA_kpis_config):
             curr_val = curr_row[col_name].values[0]
             p_val = prev_row[col_name].values[0]
