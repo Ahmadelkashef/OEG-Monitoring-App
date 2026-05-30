@@ -3027,7 +3027,7 @@ def DATA_USAGE_ALERTS_contribution():
     render_contribution_section(
         df_raw=DATA_USAGE_SITES_PER_DAY_HIST, 
         df_global=data_daily_summary, 
-        date_col="du_day", 
+        date_col="data_usage_day", 
         dimensions=["market_zone" , "governorate"],
         # 🚨 الـ Keys هنا بقت مطابقة لأعمدة الـ RAW الحقيقية (total_...) عشان الباندا تفرح ومتقفش
         metrics_map={
@@ -3061,7 +3061,7 @@ def OUG_VOICE_ALERTS_contribution():
     render_contribution_section(
         df_raw=OUG_VOICE_SITES_PER_DAY_HIST, 
         df_global=voice_daily_summary, 
-        date_col="vu_day", 
+        date_col="voice_usage_day", 
         dimensions=["market_zone" , "governorate"], 
         # 🚨 الـ Keys هنا بقت مطابقة لأعمدة الـ RAW الحقيقية (total_...) عشان الباندا تفرح ومتقفش
         metrics_map={
