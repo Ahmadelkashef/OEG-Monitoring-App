@@ -3214,7 +3214,7 @@ def RCH_SITES_TAB():
 
 def OC_SITES_TAB():
 
-    f_tab_network("OC", selected_day)
+    f_tab_network("oc", selected_day)
 
 
 
