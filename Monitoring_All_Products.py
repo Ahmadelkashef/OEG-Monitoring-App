@@ -613,16 +613,6 @@ def get_dynamic_contribution_alerts(df_raw, df_global, date_col, dimensions, met
         if not found:
             prev_date = target_date - timedelta(days=28)
 
-
-    st.write(f"--- Debug Info: Looking for date_col '{date_col}' ---")
-    st.write("Available columns in df_raw:", df_raw.columns.tolist())
-    
-    # 2. حل جذري: التأكد إن العمود موجود قبل استخدامه
-    if date_col not in df_raw.columns:
-        st.error(f"❌ Error: Column '{date_col}' not found in the dataframe!")
-        st.stop()
-
-        
     df_raw = df_raw.copy()
     df_raw[date_col] = pd.to_datetime(df_raw[date_col])
     curr = df_raw[df_raw[date_col] == target_date]
@@ -981,11 +971,11 @@ def f_tab_dynamic_dashboard(
 
     # تنسيق التواريخ لضمان دقة الفلترة
     df_clean = df_source.copy()
-    df_clean['reported_date_str'] = pd.to_datetime(df_clean['reported_date']).dt.strftime('%Y-%m-%d')
+    df_clean['unified_date_str'] = pd.to_datetime(df_clean['unified_date']).dt.strftime('%Y-%m-%d')
     target_date_str = pd.to_datetime(selected_day).strftime('%Y-%m-%d')
     
     # تصفية البيانات المبدئية لليوم المختار فقط
-    df_day_base = df_clean[df_clean['reported_date_str'] == target_date_str]
+    df_day_base = df_clean[df_clean['unified_date_str'] == target_date_str]
     
     if df_day_base.empty:
         st.warning(f"⚠️ No data available for the selected date: **{target_date_str}**.")
@@ -1224,12 +1214,12 @@ def f_tab_dynamic_dashboard(
 # def get_dynamic_network_analysis(df, target_day, past_dates, filters_dict, metrics_map):
 #     # تحويل التواريخ لضمان التوافق
 #     df = df.copy()
-#     df['rch_day'] = pd.to_datetime(df['rch_day'])
+#     df['unified_date'] = pd.to_datetime(df['unified_date'])
 #     target_day = pd.to_datetime(target_day)
 #     past_dates = [pd.to_datetime(d) for d in past_dates]
 
 #     # الفلترة الأساسية
-#     df_filtered = df[df['rch_day'].isin([target_day] + past_dates)].copy()
+#     df_filtered = df[df['unified_date'].isin([target_day] + past_dates)].copy()
     
 #     # تطبيق الفلاتر (الديناميكية)
 #     for col, val in filters_dict.items():
@@ -1238,8 +1228,8 @@ def f_tab_dynamic_dashboard(
 
 #     if df_filtered.empty: return None
 
-#     df_curr = df_filtered[df_filtered['rch_day'] == target_day]
-#     df_past = df_filtered[df_filtered['rch_day'].isin(past_dates)]
+#     df_curr = df_filtered[df_filtered['unified_date'] == target_day]
+#     df_past = df_filtered[df_filtered['unified_date'].isin(past_dates)]
 
 #     if df_curr.empty or df_past.empty: return None
 
@@ -1436,7 +1426,7 @@ def f_tab_dynamic_dashboard(
 
 #         df = pd.read_parquet(config["file_path"])
 
-#         df['rch_day'] = pd.to_datetime(df['rch_day'])
+#         df['unified_date'] = pd.to_datetime(df['unified_date'])
 
 #         return df
 
@@ -1515,7 +1505,7 @@ def f_tab_dynamic_dashboard(
 #     all_needed_dates = [target_day] + list(past_dates_list)
 
 #     df_filtered = df_net[
-#         df_net['rch_day'].isin(all_needed_dates)
+#         df_net['unified_date'].isin(all_needed_dates)
 #     ].copy()
 
 #     # =========================
@@ -1542,11 +1532,11 @@ def f_tab_dynamic_dashboard(
 #     # =========================
 
 #     df_curr = df_filtered[
-#         df_filtered['rch_day'] == target_day
+#         df_filtered['unified_date'] == target_day
 #     ]
 
 #     df_past = df_filtered[
-#         df_filtered['rch_day'].isin(past_dates_list)
+#         df_filtered['unified_date'].isin(past_dates_list)
 #     ]
 
 #     if df_curr.empty or df_past.empty:
@@ -1907,7 +1897,7 @@ NETWORK_MODULES = {
     "recharge": {
         "module_name": "recharge",
         "file_path": f"{RECHARGE_DIR}RCH_SITES_PER_DAY_HIST.parquet",
-        "date_col": "rch_day",
+        "date_col": "unified_date",
         "metrics": {
             "Subscribers" : "unq_subs",
             "Transactions": "total_rch_cnt",
@@ -1918,7 +1908,7 @@ NETWORK_MODULES = {
     "voice": {
         "module_name": "voice",
         "file_path": f"{VOICE_DIR}OUG_VOICE_SITES_PER_DAY_HIST.parquet",
-        "date_col": "vu_day",
+        "date_col": "unified_date",
         "metrics": {
             "Subscribers": "unq_subs",
             "Minutes"    : "total_oug_mous",
@@ -1929,7 +1919,7 @@ NETWORK_MODULES = {
     "data": {
         "module_name": "Data",
         "file_path": f"{DATA_DIR}DATA_USAGE_SITES_PER_DAY_HIST.parquet",
-        "date_col": "du_day",
+        "date_col": "unified_date",
         "metrics": {
             "Subscribers"   : "unq_subs",
             "Total MB Usage": "total_mb",
@@ -1940,7 +1930,7 @@ NETWORK_MODULES = {
     "oc": {
         "module_name": "Orange Cash",
         "file_path": f"{CASH_DIR}OC_SITES_PER_DAY_HIST.parquet",
-        "date_col": "oc_day",
+        "date_col": "unified_date",
         "metrics": {
             "Subscribers" : "unq_subs",
             "Transactions": "total_oc_trx_cnts",
@@ -2427,23 +2417,28 @@ def load_data():
     try:
         # Read From Repo
         RCH_PER_DAY_HIST = pd.read_parquet(f"{RECHARGE_DIR}RCH_PER_DAY_HIST.parquet")
-        RCH_PER_DAY_HIST['RCH_DAY'] = pd.to_datetime(RCH_PER_DAY_HIST['RCH_DAY'])
+        RCH_PER_DAY_HIST = RCH_PER_DAY_HIST.rename(columns={"RCH_DAY": "unified_date"})
+        RCH_PER_DAY_HIST['unified_date'] = pd.to_datetime(RCH_PER_DAY_HIST['unified_date'])
 
 
         DATA_USAGE_PER_DAY_HIST  = pd.read_parquet(f"{DATA_DIR}DATA_USAGE_PER_DAY_HIST.parquet")
-        DATA_USAGE_PER_DAY_HIST['data_usage_day'] = pd.to_datetime(DATA_USAGE_PER_DAY_HIST['data_usage_day'])
+        DATA_USAGE_PER_DAY_HIST = DATA_USAGE_PER_DAY_HIST.rename(columns={"data_usage_day": "unified_date"})
+        DATA_USAGE_PER_DAY_HIST['unified_date'] = pd.to_datetime(DATA_USAGE_PER_DAY_HIST['unified_date'])
 
 
-        OUG_VOICE_PER_DAY_HIST   = pd.read_parquet(f"{VOICE_DIR}OUG_VOICE_PER_DAY_HIST.parquet")
-        OUG_VOICE_PER_DAY_HIST['voice_usage_day'] = pd.to_datetime(OUG_VOICE_PER_DAY_HIST['voice_usage_day'])
+        OUG_VOICE_PER_DAY_HIST = pd.read_parquet(f"{VOICE_DIR}OUG_VOICE_PER_DAY_HIST.parquet")
+        OUG_VOICE_PER_DAY_HIST = OUG_VOICE_PER_DAY_HIST.rename(columns={"voice_usage_day": "unified_date"})
+        OUG_VOICE_PER_DAY_HIST['unified_date'] = pd.to_datetime(OUG_VOICE_PER_DAY_HIST['unified_date'])
 
 
-        OC_PER_DAY_HIST  = pd.read_parquet(f"{CASH_DIR}OC_PER_DAY_HIST.parquet")
-        OC_PER_DAY_HIST['oc_usage_day']           = pd.to_datetime(OC_PER_DAY_HIST['oc_usage_day'])
+        OC_PER_DAY_HIST = pd.read_parquet(f"{CASH_DIR}OC_PER_DAY_HIST.parquet")
+        OC_PER_DAY_HIST = OC_PER_DAY_HIST.rename(columns={"oc_usage_day": "unified_date"})
+        OC_PER_DAY_HIST['unified_date']           = pd.to_datetime(OC_PER_DAY_HIST['unified_date'])
 
 
         OC_SERVICES_PER_DAY_HIST = pd.read_parquet(f"{CASH_DIR}OC_SERVICES_PER_DAY_HIST.parquet")
-        OC_SERVICES_PER_DAY_HIST['oc_usage_day']  = pd.to_datetime(OC_SERVICES_PER_DAY_HIST['oc_usage_day'])
+        OC_SERVICES_PER_DAY_HIST = OC_SERVICES_PER_DAY_HIST.rename(columns={"oc_usage_day": "unified_date"})
+        OC_SERVICES_PER_DAY_HIST['unified_date']  = pd.to_datetime(OC_SERVICES_PER_DAY_HIST['unified_date'])
 
 
 
@@ -2452,19 +2447,23 @@ def load_data():
 
         
         RCH_IBRO_PER_DAY_HIST = pd.read_parquet(f"{RECHARGE_DIR}RCH_IBRO_PER_DAY_HIST.parquet")
-        RCH_IBRO_PER_DAY_HIST['reported_date'] = pd.to_datetime(RCH_IBRO_PER_DAY_HIST['reported_date'])
+        RCH_IBRO_PER_DAY_HIST = RCH_IBRO_PER_DAY_HIST.rename(columns={"reported_date": "unified_date"})
+        RCH_IBRO_PER_DAY_HIST['unified_date'] = pd.to_datetime(RCH_IBRO_PER_DAY_HIST['unified_date'])
 
 
         DATA_USAGE_IBRO_PER_DAY_HIST = pd.read_parquet(f"{DATA_DIR}DATA_USAGE_IBRO_PER_DAY_HIST.parquet")
-        DATA_USAGE_IBRO_PER_DAY_HIST['reported_date'] = pd.to_datetime(DATA_USAGE_IBRO_PER_DAY_HIST['reported_date'])
+        DATA_USAGE_IBRO_PER_DAY_HIST = DATA_USAGE_IBRO_PER_DAY_HIST.rename(columns={"reported_date": "unified_date"})
+        DATA_USAGE_IBRO_PER_DAY_HIST['unified_date'] = pd.to_datetime(DATA_USAGE_IBRO_PER_DAY_HIST['unified_date'])
 
 
         OUG_VOICE_IBRO_PER_DAY_HIST = pd.read_parquet(f"{VOICE_DIR}OUG_VOICE_IBRO_PER_DAY_HIST.parquet")
-        OUG_VOICE_IBRO_PER_DAY_HIST['reported_date'] = pd.to_datetime(OUG_VOICE_IBRO_PER_DAY_HIST['reported_date'])
+        OUG_VOICE_IBRO_PER_DAY_HIST = OUG_VOICE_IBRO_PER_DAY_HIST.rename(columns={"reported_date": "unified_date"})
+        OUG_VOICE_IBRO_PER_DAY_HIST['unified_date'] = pd.to_datetime(OUG_VOICE_IBRO_PER_DAY_HIST['unified_date'])
 
 
         OC_IBRO_PER_DAY_HIST = pd.read_parquet(f"{CASH_DIR}OC_IBRO_PER_DAY_HIST.parquet")
-        OC_IBRO_PER_DAY_HIST['reported_date'] = pd.to_datetime(OC_IBRO_PER_DAY_HIST['reported_date'])
+        OC_IBRO_PER_DAY_HIST = OC_IBRO_PER_DAY_HIST.rename(columns={"reported_date": "unified_date"})
+        OC_IBRO_PER_DAY_HIST['unified_date'] = pd.to_datetime(OC_IBRO_PER_DAY_HIST['unified_date'])
 
 
 
@@ -2476,19 +2475,23 @@ def load_data():
 
 
         RCH_SITES_PER_DAY_HIST = pd.read_parquet(f"{RECHARGE_DIR}RCH_SITES_PER_DAY_HIST.parquet")
-        RCH_SITES_PER_DAY_HIST['rch_day'] = pd.to_datetime(RCH_SITES_PER_DAY_HIST['rch_day'])
+        RCH_SITES_PER_DAY_HIST = RCH_SITES_PER_DAY_HIST.rename(columns={"RCH_DAY": "unified_date"})
+        RCH_SITES_PER_DAY_HIST['unified_date'] = pd.to_datetime(RCH_SITES_PER_DAY_HIST['unified_date'])
 
 
         DATA_USAGE_SITES_PER_DAY_HIST = pd.read_parquet(f"{DATA_DIR}DATA_USAGE_SITES_PER_DAY_HIST.parquet")
-        DATA_USAGE_SITES_PER_DAY_HIST['du_day'] = pd.to_datetime(DATA_USAGE_SITES_PER_DAY_HIST['du_day'])
+        DATA_USAGE_SITES_PER_DAY_HIST = DATA_USAGE_SITES_PER_DAY_HIST.rename(columns={"du_day": "unified_date"})
+        DATA_USAGE_SITES_PER_DAY_HIST['unified_date'] = pd.to_datetime(DATA_USAGE_SITES_PER_DAY_HIST['unified_date'])
 
 
         OUG_VOICE_SITES_PER_DAY_HIST = pd.read_parquet(f"{VOICE_DIR}OUG_VOICE_SITES_PER_DAY_HIST.parquet")
-        OUG_VOICE_SITES_PER_DAY_HIST['vu_day'] = pd.to_datetime(OUG_VOICE_SITES_PER_DAY_HIST['vu_day'])
+        OUG_VOICE_SITES_PER_DAY_HIST = OUG_VOICE_SITES_PER_DAY_HIST.rename(columns={"vu_day": "unified_date"})
+        OUG_VOICE_SITES_PER_DAY_HIST['unified_date'] = pd.to_datetime(OUG_VOICE_SITES_PER_DAY_HIST['unified_date'])
 
 
         OC_SITES_PER_DAY_HIST = pd.read_parquet(f"{CASH_DIR}OC_SITES_PER_DAY_HIST.parquet")
-        OC_SITES_PER_DAY_HIST['oc_day'] = pd.to_datetime(OC_SITES_PER_DAY_HIST['oc_day'])
+        OC_SITES_PER_DAY_HIST = OC_SITES_PER_DAY_HIST.rename(columns={"oc_day": "unified_date"})
+        OC_SITES_PER_DAY_HIST['unified_date'] = pd.to_datetime(OC_SITES_PER_DAY_HIST['unified_date'])
 
 
 
@@ -2513,7 +2516,7 @@ def load_data():
 #         # قراءة ملف الباركيه الماستر الـ 18 ميجا المرفوع في الريبو
 #         #RCH_SITES_PER_DAY_HIST = pd.read_parquet("network_master.parquet")
 #         RCH_SITES_PER_DAY_HIST = pd.read_parquet(f"{RECHARGE_DIR}RCH_SITES_PER_DAY_HIST.parquet")
-#         RCH_SITES_PER_DAY_HIST['rch_day'] = pd.to_datetime(RCH_SITES_PER_DAY_HIST['rch_day'])
+#         RCH_SITES_PER_DAY_HIST['unified_date'] = pd.to_datetime(RCH_SITES_PER_DAY_HIST['unified_date'])
 #         return RCH_SITES_PER_DAY_HIST
 #     except Exception as e:
 #         st.error(f"❌ Error loading 'RCH_SITES_PER_DAY_HIST.parquet': {e}")
@@ -2539,10 +2542,10 @@ def load_data():
 
 
 
-#         DATA_USAGE_PER_DAY_HIST['data_usage_day'] = pd.to_datetime(DATA_USAGE_PER_DAY_HIST['data_usage_day'])
-#         OUG_VOICE_PER_DAY_HIST['voice_usage_day'] = pd.to_datetime(OUG_VOICE_PER_DAY_HIST['voice_usage_day'])
-#         OC_PER_DAY_HIST['oc_usage_day']           = pd.to_datetime(OC_PER_DAY_HIST['oc_usage_day'])
-#         OC_SERVICES_PER_DAY_HIST['oc_usage_day']  = pd.to_datetime(OC_SERVICES_PER_DAY_HIST['oc_usage_day'])
+#         DATA_USAGE_PER_DAY_HIST['unified_date'] = pd.to_datetime(DATA_USAGE_PER_DAY_HIST['unified_date'])
+#         OUG_VOICE_PER_DAY_HIST['unified_date'] = pd.to_datetime(OUG_VOICE_PER_DAY_HIST['unified_date'])
+#         OC_PER_DAY_HIST['unified_date']           = pd.to_datetime(OC_PER_DAY_HIST['unified_date'])
+#         OC_SERVICES_PER_DAY_HIST['unified_date']  = pd.to_datetime(OC_SERVICES_PER_DAY_HIST['unified_date'])
 
 
 
@@ -2589,7 +2592,7 @@ with st.spinner('Fetching Data...'):
 #===========================
 
 
-rch_daily_summary = RCH_PER_DAY_HIST.groupby('RCH_DAY').agg({
+rch_daily_summary = RCH_PER_DAY_HIST.groupby('unified_date').agg({
         'DAILY_UNQ_SUBS': 'max',
         'DAILY_TRX_COUNTS': 'max',
         'DAILY_TRX_AMOUNTS': 'max'
@@ -2598,7 +2601,7 @@ rch_daily_summary = RCH_PER_DAY_HIST.groupby('RCH_DAY').agg({
 rch_daily_summary["avg_recharge"] = rch_daily_summary["DAILY_TRX_AMOUNTS"] / rch_daily_summary["DAILY_UNQ_SUBS"]
 
 
-rch_daily_summary = rch_daily_summary.sort_values('RCH_DAY')
+rch_daily_summary = rch_daily_summary.sort_values('unified_date')
 
 
 
@@ -2608,7 +2611,7 @@ rch_daily_summary = rch_daily_summary.sort_values('RCH_DAY')
 
 
 
-oc_daily_summary = OC_PER_DAY_HIST.groupby('oc_usage_day').agg({
+oc_daily_summary = OC_PER_DAY_HIST.groupby('unified_date').agg({
         'total_unq_subs': 'max',
         'total_oc_trx_cnts': 'max',
         'total_oc_trx_amts': 'max'
@@ -2617,7 +2620,7 @@ oc_daily_summary = OC_PER_DAY_HIST.groupby('oc_usage_day').agg({
 oc_daily_summary["avg_oc_amt"] = oc_daily_summary["total_oc_trx_amts"] / oc_daily_summary["total_unq_subs"]
 
 
-oc_daily_summary = oc_daily_summary.sort_values('oc_usage_day')
+oc_daily_summary = oc_daily_summary.sort_values('unified_date')
 
 
 
@@ -2628,7 +2631,7 @@ oc_daily_summary = oc_daily_summary.sort_values('oc_usage_day')
 
 
 
-data_daily_summary = DATA_USAGE_PER_DAY_HIST.groupby('data_usage_day').agg({
+data_daily_summary = DATA_USAGE_PER_DAY_HIST.groupby('unified_date').agg({
         'total_unq_subs': 'max',
         'total_mb': 'max',
         'total_gb': 'max'
@@ -2638,14 +2641,14 @@ data_daily_summary["avg_mb"] = data_daily_summary["total_mb"] / data_daily_summa
 data_daily_summary["avg_gb"] = data_daily_summary["total_gb"] / data_daily_summary["total_unq_subs"]
 
 
-data_daily_summary = data_daily_summary.sort_values('data_usage_day')
+data_daily_summary = data_daily_summary.sort_values('unified_date')
 
 
 
 
 
 
-voice_daily_summary = OUG_VOICE_PER_DAY_HIST.groupby('voice_usage_day').agg({
+voice_daily_summary = OUG_VOICE_PER_DAY_HIST.groupby('unified_date').agg({
         'total_unq_subs': 'max',
         'total_oug_cnts': 'max',
         'total_oug_mous': 'max'
@@ -2655,7 +2658,7 @@ voice_daily_summary["avg_calls_cnts"] = voice_daily_summary["total_oug_cnts"] / 
 voice_daily_summary["avg_calls_mnts"] = voice_daily_summary["total_oug_mous"] / voice_daily_summary["total_unq_subs"]
 
 
-voice_daily_summary = voice_daily_summary.sort_values('voice_usage_day')
+voice_daily_summary = voice_daily_summary.sort_values('unified_date')
 
 
 
@@ -2673,7 +2676,7 @@ voice_daily_summary = voice_daily_summary.sort_values('voice_usage_day')
 st.markdown('<div class="main-title">📊 All Products Behavior Monitoring</div>', unsafe_allow_html=True)
 
 # 1. تحديد التاريخ من المدخلات وحساب اليوم المختار
-max_date = rch_daily_summary['RCH_DAY'].max().date()
+max_date = rch_daily_summary['unified_date'].max().date()
 selected_date_input = st.date_input("Select Monitoring Date", value=max_date)
 selected_day = pd.to_datetime(selected_date_input)
 
@@ -2726,17 +2729,17 @@ st.markdown(f"""
 prev_day = selected_day - timedelta(days=1)
 
 # فلاتر اليوم الحالي واليوم السابق للأربع خدمات (كل واحدة من الداتا فريم بتاعتها)
-curr_rch = rch_daily_summary[rch_daily_summary["RCH_DAY"] == selected_day]
-prev_rch = rch_daily_summary[rch_daily_summary["RCH_DAY"] == prev_day]
+curr_rch = rch_daily_summary[rch_daily_summary["unified_date"] == selected_day]
+prev_rch = rch_daily_summary[rch_daily_summary["unified_date"] == prev_day]
 
-curr_data = DATA_USAGE_PER_DAY_HIST[DATA_USAGE_PER_DAY_HIST["data_usage_day"] == selected_day]
-prev_data = DATA_USAGE_PER_DAY_HIST[DATA_USAGE_PER_DAY_HIST["data_usage_day"] == prev_day]
+curr_data = DATA_USAGE_PER_DAY_HIST[DATA_USAGE_PER_DAY_HIST["unified_date"] == selected_day]
+prev_data = DATA_USAGE_PER_DAY_HIST[DATA_USAGE_PER_DAY_HIST["unified_date"] == prev_day]
 
-curr_voice = OUG_VOICE_PER_DAY_HIST[OUG_VOICE_PER_DAY_HIST["voice_usage_day"] == selected_day]
-prev_voice = OUG_VOICE_PER_DAY_HIST[OUG_VOICE_PER_DAY_HIST["voice_usage_day"] == prev_day]
+curr_voice = OUG_VOICE_PER_DAY_HIST[OUG_VOICE_PER_DAY_HIST["unified_date"] == selected_day]
+prev_voice = OUG_VOICE_PER_DAY_HIST[OUG_VOICE_PER_DAY_HIST["unified_date"] == prev_day]
 
-curr_cash = OC_PER_DAY_HIST[OC_PER_DAY_HIST["oc_usage_day"] == selected_day]
-prev_cash = OC_PER_DAY_HIST[OC_PER_DAY_HIST["oc_usage_day"] == prev_day]
+curr_cash = OC_PER_DAY_HIST[OC_PER_DAY_HIST["unified_date"] == selected_day]
+prev_cash = OC_PER_DAY_HIST[OC_PER_DAY_HIST["unified_date"] == prev_day]
 
 
 # 🛡️ حارس البوابة الذكي (الفرملة المبكرة للأربع خدمات معاً):
@@ -2822,7 +2825,7 @@ def RCH_tab_overall():
         ("Recharge Amount", "DAILY_TRX_AMOUNTS"),
         ("Avg Recharge"  , "avg_recharge")
     ]
-    render_dynamic_detailed_cards(df=rch_daily_summary, date_col="RCH_DAY", kpis_config=rch_kpis)
+    render_dynamic_detailed_cards(df=rch_daily_summary, date_col="unified_date", kpis_config=rch_kpis)
 
 
 
@@ -2833,7 +2836,7 @@ def OC_tab_overall():
         ("Total Volume (EGP)" , "total_oc_trx_amts"),
         ("Avg AMT / SUB"      , "avg_oc_amt")
     ]
-    render_dynamic_detailed_cards(df=oc_daily_summary, date_col="oc_usage_day", kpis_config=oc_kpis)  
+    render_dynamic_detailed_cards(df=oc_daily_summary, date_col="unified_date", kpis_config=oc_kpis)  
 
 
 
@@ -2845,7 +2848,7 @@ def DATA_USAGE_tab_overall():
         ("Total GB"      , "total_gb"),
         ("Avg MB / SUB"  , "avg_mb")
     ]
-    render_dynamic_detailed_cards(df=data_daily_summary, date_col="data_usage_day", kpis_config=data_kpis)   
+    render_dynamic_detailed_cards(df=data_daily_summary, date_col="unified_date", kpis_config=data_kpis)   
 
 
 
@@ -2859,7 +2862,7 @@ def OUG_VOICE_tab_overall():
         ("Avg CALLS / SUB"    , "avg_calls_cnts"),
         ("Avg Minutes / SUB"  , "avg_calls_mnts")
     ]
-    render_dynamic_detailed_cards(df=voice_daily_summary, date_col="voice_usage_day", kpis_config=data_kpis)   
+    render_dynamic_detailed_cards(df=voice_daily_summary, date_col="unified_date", kpis_config=data_kpis)   
 
 
 
@@ -2877,7 +2880,7 @@ def RCH_tab_alerts():
 
     df = get_dynamic_alerts(
         df_raw = RCH_PER_DAY_HIST, 
-        date_col="RCH_DAY", 
+        date_col="unified_date", 
         dimensions=["RCH_TYPE", "recharge_type_description", "RCH_HOUR_TIERS"], 
         metrics_map={"RCH_AMT": "Amount", "TRX_COUNTS": "Transactions", "UNQ_SUBS": "Subscribers"},
         thresholds=[3, 5, 10, 20] # سلم الريتشارج المخصص
@@ -2892,7 +2895,7 @@ def OC_tab_alerts():
 
     df = get_dynamic_alerts(
         df_raw=OC_SERVICES_PER_DAY_HIST, 
-        date_col="oc_usage_day", 
+        date_col="unified_date", 
         dimensions=["service_group"],
         metrics_map={"total_oc_trx_amts": "Volume (EGP)", "total_oc_trx_cnts": "Transactions", "total_unq_subs": "Users"},
         thresholds=[2, 4, 8, 15] # سلم أورانج كاش مخصص وحساس أكتر
@@ -2909,7 +2912,7 @@ def DATA_USAGE_tab_alerts():
 
     df = get_dynamic_alerts(
         df_raw=DATA_USAGE_SITES_PER_DAY_HIST, 
-        date_col="du_day", 
+        date_col="unified_date", 
         dimensions=["market_zone" , "governorate"],
         metrics_map={"total_mb": "Total DATA USAGE", "total_5g_mb": "5G DATA USAGE", "unq_subs": "Users"},
         thresholds=[2, 4, 8, 15] # سلم أورانج كاش مخصص وحساس أكتر
@@ -2927,7 +2930,7 @@ def OUG_VOICE_tab_alerts():
 
     df = get_dynamic_alerts(
         df_raw=OUG_VOICE_SITES_PER_DAY_HIST, 
-        date_col="vu_day", 
+        date_col="unified_date", 
         dimensions=["market_zone" , "governorate"],
         metrics_map={"total_oug_mous": "Minutes", "total_oug_cnts": "Calls", "unq_subs": "Users"},
         thresholds=[2, 4, 8, 15] # سلم أورانج كاش مخصص وحساس أكتر
@@ -2966,7 +2969,7 @@ def RCH_ALERTS_contribution():
         render_contribution_section(
             df_raw=RCH_PER_DAY_HIST, 
             df_global=rch_daily_summary, 
-            date_col="RCH_DAY", 
+            date_col="unified_date", 
             dimensions=["RCH_TYPE", "recharge_type_description", "RCH_HOUR_TIERS"], 
             metrics_map={"UNQ_SUBS": "Subscribers", "TRX_COUNTS": "Transactions", "RCH_AMT": "Amount"},
             global_metrics_map=recharge_global_mapping, # البارامتر الذكي الجديد المانع للأخطاء!
@@ -3003,7 +3006,7 @@ def OC_ALERTS_contribution():
     render_contribution_section(
         df_raw=OC_SERVICES_PER_DAY_HIST, 
         df_global=oc_daily_summary, 
-        date_col="oc_usage_day", 
+        date_col="unified_date", 
         dimensions=["service_group"], 
         # 🚨 الـ Keys هنا بقت مطابقة لأعمدة الـ RAW الحقيقية (total_...) عشان الباندا تفرح ومتقفش
         metrics_map={
@@ -3037,7 +3040,7 @@ def DATA_USAGE_ALERTS_contribution():
     render_contribution_section(
         df_raw=DATA_USAGE_SITES_PER_DAY_HIST, 
         df_global=data_daily_summary, 
-        date_col="du_day", 
+        date_col="unified_date", 
         dimensions=["market_zone" , "governorate"],
         # 🚨 الـ Keys هنا بقت مطابقة لأعمدة الـ RAW الحقيقية (total_...) عشان الباندا تفرح ومتقفش
         metrics_map={
@@ -3071,7 +3074,7 @@ def OUG_VOICE_ALERTS_contribution():
     render_contribution_section(
         df_raw=OUG_VOICE_SITES_PER_DAY_HIST, 
         df_global=voice_daily_summary, 
-        date_col="vu_day", 
+        date_col="unified_date", 
         dimensions=["market_zone" , "governorate"], 
         # 🚨 الـ Keys هنا بقت مطابقة لأعمدة الـ RAW الحقيقية (total_...) عشان الباندا تفرح ومتقفش
         metrics_map={
@@ -3306,8 +3309,8 @@ with main_tab_recharge:
 
     # 1. Summary Cards
     prev_day = selected_day - timedelta(days=1)
-    curr_row = rch_daily_summary[rch_daily_summary["RCH_DAY"] == selected_day]
-    prev_row = rch_daily_summary[rch_daily_summary["RCH_DAY"] == prev_day]
+    curr_row = rch_daily_summary[rch_daily_summary["unified_date"] == selected_day]
+    prev_row = rch_daily_summary[rch_daily_summary["unified_date"] == prev_day]
 
 
     # 🛡️ حارس البوابة الذكي (الفرملة المبكرة):
@@ -3447,8 +3450,8 @@ with main_tab_data:
  
     # 1. Summary Cards
     prev_day = selected_day - timedelta(days=1)
-    curr_row = data_daily_summary[data_daily_summary["data_usage_day"] == selected_day]
-    prev_row = data_daily_summary[data_daily_summary["data_usage_day"] == prev_day]
+    curr_row = data_daily_summary[data_daily_summary["unified_date"] == selected_day]
+    prev_row = data_daily_summary[data_daily_summary["unified_date"] == prev_day]
 
 
     # 🛡️ حارس البوابة الذكي (الفرملة المبكرة):
@@ -3640,8 +3643,8 @@ with main_tab_oc:
  
     # 1. Summary Cards
     prev_day = selected_day - timedelta(days=1)
-    curr_row = oc_daily_summary[oc_daily_summary["oc_usage_day"] == selected_day]
-    prev_row = oc_daily_summary[oc_daily_summary["oc_usage_day"] == prev_day]
+    curr_row = oc_daily_summary[oc_daily_summary["unified_date"] == selected_day]
+    prev_row = oc_daily_summary[oc_daily_summary["unified_date"] == prev_day]
 
 
     # 🛡️ حارس البوابة الذكي (الفرملة المبكرة):
