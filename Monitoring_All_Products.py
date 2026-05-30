@@ -1894,7 +1894,7 @@ CASH_DIR     = "Data_Drive/orange_cash_module/"
 
 NETWORK_MODULES = {
 
-    "recharge": {
+    "RCH": {
         "module_name": "RCH",
         "file_path": f"{RECHARGE_DIR}RCH_SITES_PER_DAY_HIST.parquet",
         "date_col": "rch_day",
@@ -1905,7 +1905,7 @@ NETWORK_MODULES = {
         }
     },
 
-    "voice": {
+    "OUG_VOICE": {
         "module_name": "OUG_VOICE",
         "file_path": f"{VOICE_DIR}OUG_VOICE_SITES_PER_DAY_HIST.parquet",
         "date_col": "vu_day",
@@ -1916,7 +1916,7 @@ NETWORK_MODULES = {
         }
     },
 
-    "data": {
+    "DATA_USAGE": {
         "module_name": "DATA_USAGE",
         "file_path": f"{DATA_DIR}DATA_USAGE_SITES_PER_DAY_HIST.parquet",
         "date_col": "du_day",
@@ -1927,7 +1927,7 @@ NETWORK_MODULES = {
         }
     },
 
-    "oc": {
+    "OC": {
         "module_name": "OC",
         "file_path": f"{CASH_DIR}OC_SITES_PER_DAY_HIST.parquet",
         "date_col": "oc_day",
