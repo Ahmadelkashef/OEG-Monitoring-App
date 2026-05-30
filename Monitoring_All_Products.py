@@ -3590,11 +3590,130 @@ with main_tab_data:
 # 📞 VOICE TAB
 # =========================================================
 
+# with main_tab_voice:
+#     st.info("📞 Voice Monitoring Module - Coming Soon")    
+
+
 with main_tab_voice:
-    st.info("📞 Voice Monitoring Module - Coming Soon")    
+
+    st.markdown("<br>", unsafe_allow_html=True)
 
 
 
+    st.markdown('<div class="main-title">📊 OUG VOICE Usage Monitoring Dashboard</div>', unsafe_allow_html=True)
+
+    st.markdown("<br>", unsafe_allow_html=True)
+
+ 
+    # 1. Summary Cards
+    prev_day = selected_day - timedelta(days=1)
+    curr_row = voice_daily_summary[voice_daily_summary["unified_date"] == selected_day]
+    prev_row = voice_daily_summary[voice_daily_summary["unified_date"] == prev_day]
+
+
+    # 🛡️ حارس البوابة الذكي (الفرملة المبكرة):
+    if curr_row.empty or prev_row.empty:
+        # لو أي يوم فيهم فاضي، هيطلع الرسالة ويقفل الأبلكيشن في ثانية
+        st.warning(f"⚠️ No data available for the selected date: **{selected_day.date()}**. Please check your data source or select another day.")
+        st.stop() # 🪄 الفرملة السحرية.. الكود اللي تحت مستحيل يشتغل ومستحيل يضرب إيرور!
+
+    DATA_kpis_config = [
+        ("Active Subscribers"  , "total_unq_subs"),
+        ("Total Calls Counts"  , "total_oug_cnts"),
+        ("Total Minutes"       , "total_oug_mous"),
+        ("Avg Min / SUB"       , "avg_calls_cnts"),
+        ("Avg Call / SUB"      , "avg_calls_mnts")
+    ]
+
+    if not curr_row.empty and not prev_row.empty:
+        cols = st.columns(4)
+        for i, (name, col_name) in enumerate(DATA_kpis_config):
+            curr_val = curr_row[col_name].values[0]
+            p_val = prev_row[col_name].values[0]
+            diff = ((curr_val - p_val) / p_val) * 100
+            
+            status_label, status_color = get_status_details(diff)
+            delta_class = "green" if diff >= 0 else "red"
+            symbol = "+" if diff >= 0 else ""
+            
+            with cols[i]:
+                st.markdown(f"""
+                <div class="summary-card" style="border-left: 6px solid {status_color};">
+                    <div class="summary-label">{name}</div>
+                    <div class="summary-value">{round(curr_val, 1):,}</div>
+                    <div class="summary-delta {delta_class}">{symbol}{round(diff, 1)}% vs D-1</div>
+                    <div class="status-tag" style="background-color: {status_color};">{status_label}</div>
+                </div>
+                """, unsafe_allow_html=True)
+
+    st.write("") 
+
+
+
+
+
+
+    tab_overall, tab_alerts, tab_alerts_v2 , tab_ibro , tab_network = st.tabs(["🌐 Overall View", "🔔 Alerts Center", "🎯 Contribution Alerts (V2)" , "🚀 IBRO" , "📡 Network Performance"])
+
+
+
+    with tab_overall:
+        # 🔑 لو أدمن.. رن الفانكشن القديمة علطول ومفيش أيرورز هتظهر
+        if st.session_state.get("user_role") == "admin":
+            OUG_VOICE_tab_overall()
+            
+        # 🚫 العكس: لو مش أدمن (نتورك يوزر مثلاً).. اظهر له الأيرور بس والفانكشن مش هترن
+        if st.session_state.get("user_role") != "admin":
+            st.error("❌ Wrong Password / No Permission to view this tab.")
+
+
+    with tab_alerts:
+        # 🔑 لو أدمن.. رن الفانكشن القديمة علطول ومفيش أيرورز هتظهر
+        if st.session_state.get("user_role") == "admin":
+            
+           #render_alerts_center_ui(df_rch_alerts)
+           OUG_VOICE_tab_alerts() 
+        #    st.info("💰 DATA USAGE Monitoring Module - Coming Soon") 
+
+            
+        # 🚫 العكس: لو مش أدمن (نتورك يوزر مثلاً).. اظهر له الأيرور بس والفانكشن مش هترن
+        if st.session_state.get("user_role") != "admin":
+            st.error("❌ Wrong Password / No Permission to view this tab.")
+
+
+
+    with tab_alerts_v2:
+        # 🔑 لو أدمن.. رن الفانكشن القديمة علطول ومفيش أيرورز هتظهر
+        if st.session_state.get("user_role") == "admin":
+            
+            OUG_VOICE_ALERTS_contribution()
+            # st.info("💰 DATA USAGE Monitoring Module - Coming Soon") 
+            
+            
+        # 🚫 العكس: لو مش أدمن (نتورك يوزر مثلاً).. اظهر له الأيرور بس والفانكشن مش هترن
+        if st.session_state.get("user_role") != "admin":
+            st.error("❌ Wrong Password / No Permission to view this tab.")
+
+
+
+    with tab_ibro:
+        # 🔑 لو أدمن.. رن الفانكشن القديمة علطول ومفيش أيرورز هتظهر
+        if st.session_state.get("user_role") == "admin":
+        
+            OUG_VOICE_IBRO_tab()
+            # st.info("💰 DATA USAGE Monitoring Module - Coming Soon") 
+            
+            
+        # 🚫 العكس: لو مش أدمن (نتورك يوزر مثلاً).. اظهر له الأيرور بس والفانكشن مش هترن
+        if st.session_state.get("user_role") != "admin":
+            st.error("❌ Wrong Password / No Permission to view this tab.")
+        
+        
+
+    with tab_network:
+        
+        OUG_VOICE_SITES_TAB() 
+        # st.info("💰 DATA USAGE Monitoring Module - Coming Soon") 
 
 
 
