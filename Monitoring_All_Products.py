@@ -613,6 +613,16 @@ def get_dynamic_contribution_alerts(df_raw, df_global, date_col, dimensions, met
         if not found:
             prev_date = target_date - timedelta(days=28)
 
+
+    st.write(f"--- Debug Info: Looking for date_col '{date_col}' ---")
+    st.write("Available columns in df_raw:", df_raw.columns.tolist())
+    
+    # 2. حل جذري: التأكد إن العمود موجود قبل استخدامه
+    if date_col not in df_raw.columns:
+        st.error(f"❌ Error: Column '{date_col}' not found in the dataframe!")
+        st.stop()
+
+        
     df_raw = df_raw.copy()
     df_raw[date_col] = pd.to_datetime(df_raw[date_col])
     curr = df_raw[df_raw[date_col] == target_date]
@@ -3027,7 +3037,7 @@ def DATA_USAGE_ALERTS_contribution():
     render_contribution_section(
         df_raw=DATA_USAGE_SITES_PER_DAY_HIST, 
         df_global=data_daily_summary, 
-        date_col="data_usage_day", 
+        date_col="du_day", 
         dimensions=["market_zone" , "governorate"],
         # 🚨 الـ Keys هنا بقت مطابقة لأعمدة الـ RAW الحقيقية (total_...) عشان الباندا تفرح ومتقفش
         metrics_map={
@@ -3061,7 +3071,7 @@ def OUG_VOICE_ALERTS_contribution():
     render_contribution_section(
         df_raw=OUG_VOICE_SITES_PER_DAY_HIST, 
         df_global=voice_daily_summary, 
-        date_col="voice_usage_day", 
+        date_col="vu_day", 
         dimensions=["market_zone" , "governorate"], 
         # 🚨 الـ Keys هنا بقت مطابقة لأعمدة الـ RAW الحقيقية (total_...) عشان الباندا تفرح ومتقفش
         metrics_map={
