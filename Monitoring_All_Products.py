@@ -2214,12 +2214,12 @@ def render_network_tables(df, metrics, analysis_mode):
                 columns={'site_code': 'Site', diff: 'Change', pct: 'Change %'}
             )
             
-            st.dataframe(
-                df_display.style.format({'Change': '{:+.0f}', 'Change %': '{:+.1f}%'})
-                          .map(color_delta, subset=['Change %']),
-                use_container_width=True, 
-                hide_index=True
-            )
+            # st.dataframe(
+            #     df_display.style.format({'Change': '{:+.0f}', 'Change %': '{:+.1f}%'})
+            #               .map(color_delta, subset=['Change %']),
+            #     use_container_width=True, 
+            #     hide_index=True
+            # )
 
 
             # st.dataframe(
@@ -2231,12 +2231,12 @@ def render_network_tables(df, metrics, analysis_mode):
 
 
 
-            # st.dataframe(
-            #     df_display.style.format({'Change': '{:+,.0f}', 'Change %': '{:+.1f}%'}) # التعديل هنا 👇
-            #               .map(color_delta, subset=['Change %']),
-            #     use_container_width=True, 
-            #     hide_index=True
-            # )
+            st.dataframe(
+                df_display.style.format({'Change': '{:+,.0f}', 'Change %': '{:+.1f}%'}) # التعديل هنا 👇
+                          .map(color_delta, subset=['Change %']),
+                use_container_width=True, 
+                hide_index=True
+            )
 
 
 
