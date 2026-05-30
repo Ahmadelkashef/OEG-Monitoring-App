@@ -3734,8 +3734,8 @@ with main_tab_oc:
         # 🔑 لو أدمن.. رن الفانكشن القديمة علطول ومفيش أيرورز هتظهر
         if st.session_state.get("user_role") == "admin":
         
-            #OC_IBRO_tab()
-            st.info("💰 Orange Cash Monitoring Module - Coming Soon")
+            OC_IBRO_tab()
+            # st.info("💰 Orange Cash Monitoring Module - Coming Soon")
             
             
         # 🚫 العكس: لو مش أدمن (نتورك يوزر مثلاً).. اظهر له الأيرور بس والفانكشن مش هترن
@@ -3746,5 +3746,5 @@ with main_tab_oc:
 
     with tab_network:
         
-        #OC_SITES_TAB() 
-        st.info("💰 Orange Cash Monitoring Module - Coming Soon") 
+        OC_SITES_TAB() 
+        # st.info("💰 Orange Cash Monitoring Module - Coming Soon") 
