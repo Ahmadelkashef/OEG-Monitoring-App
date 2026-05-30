@@ -3112,7 +3112,7 @@ def RCH_IBRO_tab():
         tab_title="🚀 RCH IBRO Behavioral Data Center",
         df_source = RCH_IBRO_PER_DAY_HIST,
         dimensions=['mode', 'tariff_sub_category_2', 'no_of_multisim'],
-        prefix="ibro_tab",
+        prefix="rch_ibro_tab",
         waterfall_dim="market_zone",
         mirror_dim="governorate"
     )
@@ -3127,7 +3127,7 @@ def OC_IBRO_tab():
         tab_title="🚀 WALLET IBRO Behavioral Data Center",
         df_source = OC_IBRO_PER_DAY_HIST,
         dimensions=['mode', 'tariff_sub_category_2', 'no_of_multisim'],
-        prefix="ibro_tab",
+        prefix="oc_ibro_tab",
         waterfall_dim="market_zone",
         mirror_dim="governorate"
     )
@@ -3145,7 +3145,7 @@ def DATA_USAGE_IBRO_tab():
         tab_title="🚀 DATA_USAGE IBRO Behavioral Data Center",
         df_source = DATA_USAGE_IBRO_PER_DAY_HIST,
         dimensions=['mode', 'tariff_sub_category_2', 'no_of_multisim'],
-        prefix="ibro_tab",
+        prefix="data_ibro_tab",
         waterfall_dim="market_zone",
         mirror_dim="governorate"
     )
@@ -3163,7 +3163,7 @@ def OUG_VOICE_IBRO_tab():
         tab_title="🚀 OUG_VOICE IBRO Behavioral Data Center",
         df_source = OUG_VOICE_IBRO_PER_DAY_HIST,
         dimensions=['mode', 'tariff_sub_category_2', 'no_of_multisim'],
-        prefix="ibro_tab",
+        prefix="voice_ibro_tab",
         waterfall_dim="market_zone",
         mirror_dim="governorate"
     )
