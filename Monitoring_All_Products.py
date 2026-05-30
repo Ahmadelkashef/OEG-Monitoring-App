@@ -1897,7 +1897,7 @@ NETWORK_MODULES = {
     "recharge": {
         "module_name": "recharge",
         "file_path": f"{RECHARGE_DIR}RCH_SITES_PER_DAY_HIST.parquet",
-        "date_col": "unified_date",
+        "date_col": "rch_day",
         "metrics": {
             "Subscribers" : "unq_subs",
             "Transactions": "total_rch_cnt",
@@ -1908,7 +1908,7 @@ NETWORK_MODULES = {
     "voice": {
         "module_name": "voice",
         "file_path": f"{VOICE_DIR}OUG_VOICE_SITES_PER_DAY_HIST.parquet",
-        "date_col": "unified_date",
+        "date_col": "vu_day",
         "metrics": {
             "Subscribers": "unq_subs",
             "Minutes"    : "total_oug_mous",
@@ -1919,7 +1919,7 @@ NETWORK_MODULES = {
     "data": {
         "module_name": "Data",
         "file_path": f"{DATA_DIR}DATA_USAGE_SITES_PER_DAY_HIST.parquet",
-        "date_col": "unified_date",
+        "date_col": "du_day",
         "metrics": {
             "Subscribers"   : "unq_subs",
             "Total MB Usage": "total_mb",
@@ -1930,7 +1930,7 @@ NETWORK_MODULES = {
     "oc": {
         "module_name": "Orange Cash",
         "file_path": f"{CASH_DIR}OC_SITES_PER_DAY_HIST.parquet",
-        "date_col": "unified_date",
+        "date_col": "oc_day",
         "metrics": {
             "Subscribers" : "unq_subs",
             "Transactions": "total_oc_trx_cnts",
