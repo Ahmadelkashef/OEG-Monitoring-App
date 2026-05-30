@@ -2232,7 +2232,7 @@ def render_network_tables(df, metrics, analysis_mode):
 
 
             st.dataframe(
-                df_display.style.format({'Change': '{:+, .0f}', 'Change %': '{:+.1f}%'}) # التعديل هنا 👇
+                df_display.style.format({'Change': '{:+,.0f}', 'Change %': '{:+.1f}%'}) # التعديل هنا 👇
                           .map(color_delta, subset=['Change %']),
                 use_container_width=True, 
                 hide_index=True
