@@ -1899,41 +1899,42 @@ NETWORK_MODULES = {
         "file_path": f"{RECHARGE_DIR}RCH_SITES_PER_DAY_HIST.parquet",
         "date_col": "rch_day",
         "metrics": {
-            "Subscribers": "unq_subs",
-            "Transactions": "total_rch_cnt",
-            "Amount": "total_rch_amt"
+            "RCH_Subscribers" : "unq_subs",
+            "RCH_Transactions": "total_rch_cnt",
+            "RCH_Amount"      : "total_rch_amt"
         }
     },
 
     "voice": {
         "module_name": "Voice",
         "file_path": f"{VOICE_DIR}OUG_VOICE_SITES_PER_DAY_HIST.parquet",
-        "date_col": "voice_day",
+        "date_col": "vu_day",
         "metrics": {
-            "Subscribers": "unq_subs",
-            "Minutes": "total_minutes",
-            "Calls": "total_calls"
+            "OUG_VOICE_Subscribers": "unq_subs",
+            "OUG_VOICE_Minutes"    : "total_oug_mous",
+            "OUG_VOICE_Calls"      : "total_oug_cnts"
         }
     },
 
     "data": {
         "module_name": "Data",
         "file_path": f"{DATA_DIR}DATA_USAGE_SITES_PER_DAY_HIST.parquet",
-        "date_col": "usage_day",
+        "date_col": "du_day",
         "metrics": {
-            "Subscribers": "unq_subs",
-            "MB Usage": "total_mb"
+            "DATA_Subscribers" : "unq_subs",
+            "Total MB Usage"   : "total_mb",
+            "5G MB Usage"      : "total_5g_mb"
         }
     },
 
     "oc": {
         "module_name": "Orange Cash",
         "file_path": f"{CASH_DIR}OC_SITES_PER_DAY_HIST.parquet",
-        "date_col": "trx_day",
+        "date_col": "oc_day",
         "metrics": {
-            "Subscribers": "unq_subs",
-            "Transactions": "total_trx",
-            "Amount": "total_amt"
+            "OC_Subscribers" : "unq_subs",
+            "OC_Transactions": "total_oc_trx_cnts",
+            "OC_Amount"      : "total_oc_trx_amts"
         }
     }
 }
@@ -2481,7 +2482,7 @@ def load_data():
 
 
 
-        return RCH_PER_DAY_HIST , DATA_USAGE_PER_DAY_HIST , OUG_VOICE_PER_DAY_HIST , OC_PER_DAY_HIST , OC_SERVICES_PER_DAY_HIST , RCH_IBRO_PER_DAY_HIST , DATA_USAGE_IBRO_PER_DAY_HIST , OUG_VOICE_IBRO_PER_DAY_HIST , OC_IBRO_PER_DAY_HIST , RCH_SITES_PER_DAY_HIST , DATA_USAGE_SITES_PER_DAY_HIST , OUG_VOICE_SITES_PER_DAY_HIST , OC_SITES_PER_DAY_HIST
+        return RCH_PER_DAY_HIST , DATA_USAGE_PER_DAY_HIST , OUG_VOICE_PER_DAY_HIST , OC_PER_DAY_HIST , OC_SERVICES_PER_DAY_HIST           , RCH_IBRO_PER_DAY_HIST , DATA_USAGE_IBRO_PER_DAY_HIST , OUG_VOICE_IBRO_PER_DAY_HIST , OC_IBRO_PER_DAY_HIST               , RCH_SITES_PER_DAY_HIST , DATA_USAGE_SITES_PER_DAY_HIST , OUG_VOICE_SITES_PER_DAY_HIST , OC_SITES_PER_DAY_HIST
                
     
 
