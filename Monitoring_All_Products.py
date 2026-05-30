@@ -3194,7 +3194,7 @@ def OUG_VOICE_IBRO_tab():
 
 def RCH_SITES_TAB():
 
-    f_tab_network("RCH", selected_day)
+    f_tab_network("recharge", selected_day)
 
 
 
