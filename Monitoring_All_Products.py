@@ -1344,7 +1344,7 @@ def f_tab_dynamic_dashboard(
 # # VOICE_DIR    = "Data_Drive/voice_module/"
 # # CASH_DIR     = "Data_Drive/orange_cash_module/"
 
-# # SITES_RCH_PER_DAY_HIST = pd.read_parquet(f"{RECHARGE_DIR}network_master.parquet"
+# # RCH_SITES_PER_DAY_HIST = pd.read_parquet(f"{RECHARGE_DIR}RCH_SITES_PER_DAY_HIST.parquet"
 
 
 
@@ -1352,7 +1352,7 @@ def f_tab_dynamic_dashboard(
 
 #     "recharge": {
 #         "module_name": "Recharge",
-#         "file_path": f"{RECHARGE_DIR}network_master.parquet",
+#         "file_path": f"{RECHARGE_DIR}RCH_SITES_PER_DAY_HIST.parquet",
 
 #         "metrics": {
 #             "Subscribers": "unq_subs",
@@ -1363,7 +1363,7 @@ def f_tab_dynamic_dashboard(
 
 #     "voice": {
 #         "module_name": "Voice",
-#         "file_path": f"{RECHARGE_DIR}network_master.parquet",
+#         "file_path": f"{RECHARGE_DIR}RCH_SITES_PER_DAY_HIST.parquet",
 
 #         "metrics": {
 #             "Subscribers": "unq_subs",
@@ -1374,7 +1374,7 @@ def f_tab_dynamic_dashboard(
 
 #     "data": {
 #         "module_name": "Data",
-#         "file_path": f"{RECHARGE_DIR}network_master.parquet",
+#         "file_path": f"{RECHARGE_DIR}RCH_SITES_PER_DAY_HIST.parquet",
 
 #         "metrics": {
 #             "Subscribers": "unq_subs",
@@ -1385,7 +1385,7 @@ def f_tab_dynamic_dashboard(
 
 #     "oc": {
 #         "module_name": "Orange Cash",
-#         "file_path": f"{RECHARGE_DIR}network_master.parquet",
+#         "file_path": f"{RECHARGE_DIR}RCH_SITES_PER_DAY_HIST.parquet",
 
 #         "metrics": {
 #             "Subscribers": "unq_subs",
@@ -1894,14 +1894,14 @@ RECHARGE_DIR = "Data_Drive/recharge_module/"
 # VOICE_DIR    = "Data_Drive/voice_module/"
 # CASH_DIR     = "Data_Drive/orange_cash_module/"
 
-# SITES_RCH_PER_DAY_HIST = pd.read_parquet(f"{RECHARGE_DIR}network_master.parquet"
+# RCH_SITES_PER_DAY_HIST = pd.read_parquet(f"{RECHARGE_DIR}RCH_SITES_PER_DAY_HIST.parquet"
 
 
 NETWORK_MODULES = {
 
     "recharge": {
         "module_name": "Recharge",
-        "file_path": f"{RECHARGE_DIR}network_master.parquet",
+        "file_path": f"{RECHARGE_DIR}RCH_SITES_PER_DAY_HIST.parquet",
         "date_col": "rch_day",
         "metrics": {
             "Subscribers": "unq_subs",
@@ -1912,7 +1912,7 @@ NETWORK_MODULES = {
 
     "voice": {
         "module_name": "Voice",
-        "file_path": f"{RECHARGE_DIR}network_master.parquet",
+        "file_path": f"{RECHARGE_DIR}RCH_SITES_PER_DAY_HIST.parquet",
         "date_col": "voice_day",
         "metrics": {
             "Subscribers": "unq_subs",
@@ -1923,7 +1923,7 @@ NETWORK_MODULES = {
 
     "data": {
         "module_name": "Data",
-        "file_path": f"{RECHARGE_DIR}network_master.parquet",
+        "file_path": f"{RECHARGE_DIR}RCH_SITES_PER_DAY_HIST.parquet",
         "date_col": "usage_day",
         "metrics": {
             "Subscribers": "unq_subs",
@@ -1933,7 +1933,7 @@ NETWORK_MODULES = {
 
     "oc": {
         "module_name": "Orange Cash",
-        "file_path": f"{RECHARGE_DIR}network_master.parquet",
+        "file_path": f"{RECHARGE_DIR}RCH_SITES_PER_DAY_HIST.parquet",
         "date_col": "trx_day",
         "metrics": {
             "Subscribers": "unq_subs",
@@ -2421,17 +2421,17 @@ def load_data():
     try:
         # قراءة ملف الباركيه الماستر الـ 18 ميجا المرفوع في الريبو
         #RCH_PER_DAY_HIST = pd.read_parquet("Recharge_Monitoring_Data_HIST.parquet")
-        RCH_PER_DAY_HIST = pd.read_parquet(f"{RECHARGE_DIR}Recharge_Monitoring_Data_HIST.parquet")
+        RCH_PER_DAY_HIST = pd.read_parquet(f"{RECHARGE_DIR}RCH_PER_DAY_HIST.parquet")
         RCH_PER_DAY_HIST['RCH_DAY'] = pd.to_datetime(RCH_PER_DAY_HIST['RCH_DAY'])
 
 
-        #IBRO_RCH_PER_DAY_HIST = pd.read_parquet("IBRO_RCH_PER_DAY_HIST.parquet")
-        IBRO_RCH_PER_DAY_HIST = pd.read_parquet(f"{RECHARGE_DIR}IBRO_RCH_PER_DAY_HIST.parquet")
-        IBRO_RCH_PER_DAY_HIST['reported_date'] = pd.to_datetime(IBRO_RCH_PER_DAY_HIST['reported_date'])
+        #RCH_IBRO_PER_DAY_HIST = pd.read_parquet("IBRO_RCH_PER_DAY_HIST.parquet")
+        RCH_IBRO_PER_DAY_HIST = pd.read_parquet(f"{RECHARGE_DIR}RCH_IBRO_PER_DAY_HIST.parquet")
+        RCH_IBRO_PER_DAY_HIST['reported_date'] = pd.to_datetime(RCH_IBRO_PER_DAY_HIST['reported_date'])
 
 
 
-        return RCH_PER_DAY_HIST , IBRO_RCH_PER_DAY_HIST
+        return RCH_PER_DAY_HIST , RCH_IBRO_PER_DAY_HIST
     
 
     except Exception as e:
@@ -2449,12 +2449,12 @@ def load_data():
 def load_master_network_data():
     try:
         # قراءة ملف الباركيه الماستر الـ 18 ميجا المرفوع في الريبو
-        #SITES_RCH_PER_DAY_HIST = pd.read_parquet("network_master.parquet")
-        SITES_RCH_PER_DAY_HIST = pd.read_parquet(f"{RECHARGE_DIR}network_master.parquet")
-        SITES_RCH_PER_DAY_HIST['rch_day'] = pd.to_datetime(SITES_RCH_PER_DAY_HIST['rch_day'])
-        return SITES_RCH_PER_DAY_HIST
+        #RCH_SITES_PER_DAY_HIST = pd.read_parquet("network_master.parquet")
+        RCH_SITES_PER_DAY_HIST = pd.read_parquet(f"{RECHARGE_DIR}RCH_SITES_PER_DAY_HIST.parquet")
+        RCH_SITES_PER_DAY_HIST['rch_day'] = pd.to_datetime(RCH_SITES_PER_DAY_HIST['rch_day'])
+        return RCH_SITES_PER_DAY_HIST
     except Exception as e:
-        st.error(f"❌ Error loading 'network_master.parquet': {e}")
+        st.error(f"❌ Error loading 'RCH_SITES_PER_DAY_HIST.parquet': {e}")
         return pd.DataFrame()
     
 
@@ -2466,25 +2466,25 @@ def load_master_network_data():
 def load_master_SUMMARY_data():
     try:
         # قراءة ملف الباركيه الماستر الـ 18 ميجا المرفوع في الريبو
-        # DATA_PER_DAY_HIST      = pd.read_parquet("DATA_PER_DAY_HIST.parquet")
+        # DATA_USAGE_PER_DAY_HIST      = pd.read_parquet("DATA_USAGE_PER_DAY_HIST.parquet")
         # OUG_VOICE_PER_DAY_HIST = pd.read_parquet("OUG_VOICE_PER_DAY_HIST.parquet")
         # OC_PER_DAY_HIST        = pd.read_parquet("OC_PER_DAY_HIST.parquet")
 
-        DATA_PER_DAY_HIST        = pd.read_parquet(f"{DATA_DIR}DATA_PER_DAY_HIST.parquet")
+        DATA_USAGE_PER_DAY_HIST        = pd.read_parquet(f"{DATA_DIR}DATA_USAGE_PER_DAY_HIST.parquet")
         OUG_VOICE_PER_DAY_HIST   = pd.read_parquet(f"{VOICE_DIR}OUG_VOICE_PER_DAY_HIST.parquet")
         OC_PER_DAY_HIST          = pd.read_parquet(f"{CASH_DIR}OC_PER_DAY_HIST.parquet")
         OC_SERVICES_PER_DAY_HIST = pd.read_parquet(f"{CASH_DIR}OC_SERVICES_PER_DAY_HIST.parquet")
 
 
 
-        DATA_PER_DAY_HIST['data_usage_day']       = pd.to_datetime(DATA_PER_DAY_HIST['data_usage_day'])
+        DATA_USAGE_PER_DAY_HIST['data_usage_day']       = pd.to_datetime(DATA_USAGE_PER_DAY_HIST['data_usage_day'])
         OUG_VOICE_PER_DAY_HIST['voice_usage_day'] = pd.to_datetime(OUG_VOICE_PER_DAY_HIST['voice_usage_day'])
         OC_PER_DAY_HIST['oc_usage_day']           = pd.to_datetime(OC_PER_DAY_HIST['oc_usage_day'])
         OC_SERVICES_PER_DAY_HIST['oc_usage_day']  = pd.to_datetime(OC_SERVICES_PER_DAY_HIST['oc_usage_day'])
 
 
 
-        return DATA_PER_DAY_HIST , OUG_VOICE_PER_DAY_HIST , OC_PER_DAY_HIST , OC_SERVICES_PER_DAY_HIST
+        return DATA_USAGE_PER_DAY_HIST , OUG_VOICE_PER_DAY_HIST , OC_PER_DAY_HIST , OC_SERVICES_PER_DAY_HIST
     except Exception as e:
         st.error(f"❌ Error loading SUMMARY_data': {e}")
         return pd.DataFrame()
@@ -2511,8 +2511,8 @@ def load_master_SUMMARY_data():
 with st.spinner('Fetching Data...'):
     try:
         #RCH_PER_DAY_HIST = load_data()
-        RCH_PER_DAY_HIST, IBRO_RCH_PER_DAY_HIST = load_data()
-        DATA_PER_DAY_HIST , OUG_VOICE_PER_DAY_HIST , OC_PER_DAY_HIST , OC_SERVICES_PER_DAY_HIST = load_master_SUMMARY_data()
+        RCH_PER_DAY_HIST, RCH_IBRO_PER_DAY_HIST = load_data()
+        DATA_USAGE_PER_DAY_HIST , OUG_VOICE_PER_DAY_HIST , OC_PER_DAY_HIST , OC_SERVICES_PER_DAY_HIST = load_master_SUMMARY_data()
     except Exception as e:
         st.error(f'Error connecting to database: {e}')
         st.stop()
@@ -2565,7 +2565,7 @@ oc_daily_summary = oc_daily_summary.sort_values('oc_usage_day')
 
 
 
-data_daily_summary = DATA_PER_DAY_HIST.groupby('data_usage_day').agg({
+data_daily_summary = DATA_USAGE_PER_DAY_HIST.groupby('data_usage_day').agg({
         'total_unq_subs': 'max',
         'total_mb': 'max',
         'total_gb': 'max'
@@ -2649,8 +2649,8 @@ prev_day = selected_day - timedelta(days=1)
 curr_rch = rch_daily_summary[rch_daily_summary["RCH_DAY"] == selected_day]
 prev_rch = rch_daily_summary[rch_daily_summary["RCH_DAY"] == prev_day]
 
-curr_data = DATA_PER_DAY_HIST[DATA_PER_DAY_HIST["data_usage_day"] == selected_day]
-prev_data = DATA_PER_DAY_HIST[DATA_PER_DAY_HIST["data_usage_day"] == prev_day]
+curr_data = DATA_USAGE_PER_DAY_HIST[DATA_USAGE_PER_DAY_HIST["data_usage_day"] == selected_day]
+prev_data = DATA_USAGE_PER_DAY_HIST[DATA_USAGE_PER_DAY_HIST["data_usage_day"] == prev_day]
 
 curr_voice = OUG_VOICE_PER_DAY_HIST[OUG_VOICE_PER_DAY_HIST["voice_usage_day"] == selected_day]
 prev_voice = OUG_VOICE_PER_DAY_HIST[OUG_VOICE_PER_DAY_HIST["voice_usage_day"] == prev_day]
@@ -2910,7 +2910,7 @@ def RCH_IBRO_tab():
 
     f_tab_dynamic_dashboard(
         tab_title="🚀 IBRO Behavioral Data Center",
-        df_source = IBRO_RCH_PER_DAY_HIST,
+        df_source = RCH_IBRO_PER_DAY_HIST,
         dimensions=['mode', 'tariff_sub_category_2', 'no_of_multisim'],
         prefix="ibro_tab",
         waterfall_dim="market_zone",
