@@ -1951,7 +1951,7 @@ NETWORK_MODULES = {
 
 
 
-#@st.cache_data(ttl=600)
+@st.cache_data(ttl=600)
 def load_network_module_data(module_key):
 
     config = NETWORK_MODULES[module_key]
@@ -2429,7 +2429,7 @@ CASH_DIR     = "Data_Drive/orange_cash_module/"
 # Git Connection
 # =====================================================
 
-#@st.cache_data(ttl=600)
+@st.cache_data(ttl=600)
 #@st.cache_data(ttl=60)
 def load_data():
     try:
