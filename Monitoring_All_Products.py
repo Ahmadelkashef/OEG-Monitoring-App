@@ -3220,14 +3220,14 @@ def OC_SITES_TAB():
 
 def DATA_USAGE_SITES_TAB():
 
-    f_tab_network("DATA_USAGE", selected_day)
+    f_tab_network("data", selected_day)
 
 
 
         
 def OUG_VOICE_SITES_TAB():
 
-    f_tab_network("OUG_VOICE", selected_day)
+    f_tab_network("voice", selected_day)
 
 
 
