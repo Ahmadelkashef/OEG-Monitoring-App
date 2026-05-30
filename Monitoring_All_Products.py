@@ -9,6 +9,8 @@ import os
 from datetime import timedelta
 import json # هنحتاج دي عشان نقرأ بيانات الـ Secrets
 
+from itertools import combinations
+
 
 # =========================================================
 # PAGE CONFIG
@@ -120,7 +122,6 @@ footer {visibility: hidden;}
 
 
 
-
 # =========================================================
 # 2. Global Functions
 # =========================================================
@@ -172,101 +173,6 @@ def detect_trend(values):
 
 
 
-#===========RCH ALERTS
-
-
-# =========================================================
-# 3. ALERTS LOGIC FUNCTIONS
-# =========================================================
-
-
-def get_alerts_logic(df_raw, target_date):
-    prev_date = target_date - timedelta(days=1)
-    curr = df_raw[df_raw["RCH_DAY"] == target_date]
-    prev = df_raw[df_raw["RCH_DAY"] == prev_date]
-    
-    if curr.empty or prev.empty: return pd.DataFrame()
-
-    # تعديل: تعريف كافة الاحتمالات (فردي، ثنائي، ثلاثي)
-    combinations = [
-        ["RCH_TYPE"], ["recharge_type_description"], ["RCH_HOUR_TIERS"],
-        ["RCH_TYPE", "recharge_type_description"],
-        ["RCH_TYPE", "RCH_HOUR_TIERS"],
-        ["recharge_type_description", "RCH_HOUR_TIERS"],
-        ["RCH_TYPE", "recharge_type_description", "RCH_HOUR_TIERS"]
-    ]
-    
-    m_map = {"RCH_AMT": "Amount", "TRX_COUNTS": "Transactions", "UNQ_SUBS": "Subscribers"}
-    results = []
-
-    for cols in combinations:
-        curr_g = curr.groupby(cols)[["TRX_COUNTS", "RCH_AMT", "UNQ_SUBS"]].sum().reset_index()
-        prev_g = prev.groupby(cols)[["TRX_COUNTS", "RCH_AMT", "UNQ_SUBS"]].sum().reset_index()
-        
-        merged = curr_g.merge(prev_g, on=cols, suffixes=('_c', '_p'))
-        
-        for _, row in merged.iterrows():
-            segment_name = " | ".join([str(row[c]) for c in cols])
-            for col_key, name in m_map.items():
-                p_val = row[f"{col_key}_p"]
-                c_val = row[f"{col_key}_c"]
-                if p_val > 0:
-                    growth = ((c_val - p_val) / p_val) * 100
-                    abs_g = abs(growth)
-                    
-                    if abs_g >= 3: # الحد الأدنى للظهور
-                        # تطبيق سلم التنبيهات الجديد الخاص بك
-                        if abs_g < 5: level = "Normal"
-                        elif 5 <= abs_g < 10: level = "Watch"
-                        elif 10 <= abs_g < 20: level = "Warning"
-                        else: level = "Critical"
-                        
-                        results.append({
-                            "segment": segment_name,
-                            "metric": name, 
-                            "growth": round(growth, 1),
-                            "current_val": round(c_val, 1),
-                            "previous_val": round(p_val, 1),
-                            "level": level, 
-                            "direction": "Drop" if growth < 0 else "Up"
-                        })
-    return pd.DataFrame(results)
-
-
-
-# =========================================================
-# 3. UI RENDERERS ALERTS
-# =========================================================
-
-def show_alerts(data, is_drop):
-    # إضافة Normal للتبويبات حسب السلم الجديد
-    levels = ["Critical", "Warning", "Watch", "Normal"]
-    tabs = st.tabs([f"{l} ({len(data[data['level']==l])})" for l in levels])
-    
-    for i, l in enumerate(levels):
-        with tabs[i]:
-            subset = data[data["level"] == l]
-            if subset.empty: 
-                st.info(f"No {l} alerts found.")
-            else:
-                for _, r in subset.iterrows():
-                    color = "#DA3633" if is_drop else "#238636"
-                    arrow = "▼" if is_drop else "▲"
-                    
-                    st.markdown(f"""
-                    <div class="alert-card {'drop-card' if is_drop else 'up-card'}">
-                        <span style="float:right; color:{color}; font-weight:800; font-size:18px;">
-                            {arrow} {abs(r['growth'])}%
-                        </span>
-                        <div style="font-weight:700; margin-bottom:5px;">{r['segment']}</div>
-                        <div style="font-size:13px; color:#8B949E; margin-bottom:8px;">
-                            Current: <b>{r['current_val']:,}</b> | Previous: <b>{r['previous_val']:,}</b>
-                        </div>
-                        <span class="metric-tag">Metric: {r['metric']}</span>
-                    </div>
-                    """, unsafe_allow_html=True)
-
-
 
 
 
@@ -274,425 +180,71 @@ def show_alerts(data, is_drop):
 
 
 # =========================================================
-# 3. contribution_alerts LOGIC FUNCTIONS
+# 2. OVERALL Global Functions FOR ALL MAIN TABS
 # =========================================================
 
 
-def get_alerts_logic_v2(df_raw, target_date, comp_mode="vs Yesterday (D-1)"):
-    """
-    الدالة العبقرية الشاملة (V3) لدعم المقارنة اليومية، الأسبوعية، 
-    ومقارنة المراحل الشهرية الذكية (Phase-to-Phase Matching) بناءً على اسم اليوم ومرحلة الشهر.
-    """
-    # جلب دالة تحديد المرحلة من الكود الأصلي للتأكد من التطابق
-    def get_phase(dt):
-        day = dt.day
-        if 1 <= day <= 7: return "Salary Period"
-        elif 8 <= day <= 15: return "Mid-Month"
-        elif 16 <= day <= 22: return "Late-Mid"
-        else: return "End-Month"
 
-    # تحديد يوم المقارنة (prev_date) بناءً على الفلتر المختار
-    if comp_mode == "vs Yesterday (D-1)":
-        prev_date = target_date - timedelta(days=1)
-        
-    elif comp_mode == "vs Same Day Last Week (D-7)":
-        prev_date = target_date - timedelta(days=7)
-        
-    else:  # الخيار الذكي: vs Same Weekday & Month Phase (Smart Match)
-        target_weekday = target_date.weekday() # معرفة اسم اليوم (خميس، جمعة...)
-        target_phase = get_phase(target_date) # معرفة مرحلة الشهر
-        
-        # اللف لورا في الزمن بزيادة 7 أيام في كل خطوة للبحث عن نفس اليوم ونفس المرحلة
-        found = False
-        weeks_back = 1
-        # الأمان: مش هنرجع أكتر من 6 أسابيع لورا عشان الأداء
-        while weeks_back <= 6:
-            check_date = target_date - timedelta(days=7 * weeks_back)
-            if check_date.weekday() == target_weekday and get_phase(check_date) == target_phase:
-                prev_date = check_date
-                found = True
-                break
-            weeks_back += 1
-            
-        # حماية: لو ملعقش يوم يطابق (نادر الحدوث)، يرجع أوتوماتيك للشهر اللي قبله بـ 28 يوم
-        if not found:
-            prev_date = target_date - timedelta(days=28)
-
-    # تصفية البيانات لليوم الحالي ويوم المقارنة المستخرج
-    curr = df_raw[df_raw["RCH_DAY"] == target_date]
-    prev = df_raw[df_raw["RCH_DAY"] == prev_date]
-    
-    if curr.empty or prev.empty: return pd.DataFrame()
-
-    # حساب التغيير المطلق الكلي على مستوى الشبكة بالكامل (النهاردة ضد يوم المقارنة الذكي)
-    global_curr = df_daily[df_daily["RCH_DAY"] == target_date]
-    global_prev = df_daily[df_daily["RCH_DAY"] == prev_date]
-    
-    if global_curr.empty or global_prev.empty: return pd.DataFrame()
-    
-    global_diffs = {
-        "Subscribers": global_curr["DAILY_UNQ_SUBS"].values[0] - global_prev["DAILY_UNQ_SUBS"].values[0],
-        "Transactions": global_curr["DAILY_TRX_COUNTS"].values[0] - global_prev["DAILY_TRX_COUNTS"].values[0],
-        "Amount": global_curr["DAILY_TRX_AMOUNTS"].values[0] - global_prev["DAILY_TRX_AMOUNTS"].values[0],
-        "Avg Recharge": global_curr["avg_recharge"].values[0] - global_prev["avg_recharge"].values[0]
-    }
-
-    # الـ 7 احتمالات والتباديل والتوافيق للأبعاد الثلاثة
-    combinations = [
-        ["RCH_TYPE"], ["recharge_type_description"], ["RCH_HOUR_TIERS"],
-        ["RCH_TYPE", "recharge_type_description"],
-        ["RCH_TYPE", "RCH_HOUR_TIERS"],
-        ["recharge_type_description", "RCH_HOUR_TIERS"],
-        ["RCH_TYPE", "recharge_type_description", "RCH_HOUR_TIERS"]
-    ]
-    
-    m_map = {"RCH_AMT": "Amount", "TRX_COUNTS": "Transactions", "UNQ_SUBS": "Subscribers"}
-    results = []
-
-    for cols in combinations:
-        curr_g = curr.groupby(cols)[["TRX_COUNTS", "RCH_AMT", "UNQ_SUBS"]].sum().reset_index()
-        prev_g = prev.groupby(cols)[["TRX_COUNTS", "RCH_AMT", "UNQ_SUBS"]].sum().reset_index()
-        
-        merged = curr_g.merge(prev_g, on=cols, suffixes=('_c', '_p'))
-        
-        for _, row in merged.iterrows():
-            segment_name = " | ".join([str(row[c]) for c in cols])
-            
-            for col_key, name in m_map.items():
-                p_val = row[f"{col_key}_p"]
-                c_val = row[f"{col_key}_c"]
-                
-                seg_diff = c_val - p_val
-                tot_diff = global_diffs[name]
-                
-                if tot_diff == 0: continue
-                
-                contribution_pct = round((seg_diff / abs(tot_diff)) * 100, 1)
-                
-                if abs(contribution_pct) >= 5.0:
-                    if abs(contribution_pct) < 15.0:
-                        level = "Minor Contributor"
-                    elif 15.0 <= abs(contribution_pct) < 30.0:
-                        level = "Major Contributor"
-                    else:
-                        level = "Primary Driver"
-                    
-                    segment_direction = "Increase" if seg_diff > 0 else "Decline"
-                    
-                    results.append({
-                        "segment": segment_name,
-                        "metric": name, 
-                        "contribution": abs(contribution_pct),
-                        "seg_diff": round(seg_diff, 1),
-                        "tot_diff": round(tot_diff, 1),
-                        "current_val": round(c_val, 1),
-                        "previous_val": round(p_val, 1),
-                        "level": level, 
-                        "network_direction": segment_direction,
-                        "compared_to_date": prev_date.strftime('%Y-%m-%d') # بنسجل التاريخ اللي قارن بيه عشان نظهره شياكة لليوزر
-                    })
-                        
-    return pd.DataFrame(results)
-
-
+#==   1. TAB OVERALL
 
 
 # =========================================================
-# 3. UI RENDERERS contribution_alerts
+# 2. OVERALL TABS
 # =========================================================
 
 
-def show_contribution_alerts(data):
-    """
-    دالة الـ UI المخصصة لعرض كروت المساهمة بشكل أنيق ومنظم حسب السلم الجديد
-    """
-    levels = ["Primary Driver", "Major Contributor", "Minor Contributor"]
-    tabs = st.tabs([f"🎯 {l} ({len(data[data['level']==l])})" for l in levels])
-    
-    for i, l in enumerate(levels):
-        with tabs[i]:
-            subset = data[data["level"] == l]
-            if subset.empty: 
-                st.info(f"No {l} found for this view.")
-            else:
-                for _, r in subset.iterrows():
-                    # تحديد الألوان بناءً على السلم والتاغات الجديدة
-                    if l == "Primary Driver":
-                        color = "#DA3633" if r['network_direction'] == "Decline" else "#238636"
-                        bg_style = "border-left: 6px solid " + color + ";"
-                    elif l == "Major Contributor":
-                        color = "#E36209"
-                        bg_style = "border-left: 4px solid #E36209;"
-                    else:
-                        color = "#F2CC60"
-                        bg_style = "border-left: 4px solid #F2CC60;"
-                        
-                    arrow = "▼" if r['seg_diff'] < 0 else "▲"
-                    
-                    st.markdown(f"""
-                    <div class="alert-card" style="{bg_style}">
-                        <span style="float:right; color:{color}; font-weight:800; font-size:18px;">
-                            Share: {r['contribution']}%
-                        </span>
-                        <div style="font-weight:700; font-size:15px; margin-bottom:5px;">{r['segment']}</div>
-                        <div style="font-size:13px; color:#8B949E; margin-bottom:8px;">
-                            Segment Move: <b>{arrow} {abs(r['seg_diff']):,}</b> &nbsp;|&nbsp; Total Network Move: <b>{r['tot_diff']:,}</b>
-                        </div>
-                        <span class="metric-tag" style="color:white; background-color:#30363D;">Metric: {r['metric']}</span>
-                        <span class="metric-tag" style="color:{color}; font-weight:bold;">{l}</span>
-                    </div>
-                    """, unsafe_allow_html=True)
 
-
-
-
-
-
-
-
-
-def process_behavioral_data_v2(df_day_filtered, selected_mode, selected_segment, selected_multisim):
-    """
-    دالة مطورة لفلترة داتا IBRO بناءً على المود، الشريحة، والـ Multi-Sim وحساب المؤشرات
-    """
-    # حماية: لو الداتا الأساسية فاضية من الأول
-    if df_day_filtered.empty:
-        return 0, 0, 0, "N/A", pd.DataFrame()
-
-    # 1. فلترة بناءً على المود (7_DAYS or 14_DAYS)
-    df_res = df_day_filtered[df_day_filtered['mode'] == selected_mode]
-    
-    # 2. فلترة بناءً على الشريحة لو مش مختار الكل
-    if selected_segment != "All Segments":
-        df_res = df_res[df_res['tariff_sub_category_2'] == selected_segment]
-        
-    # 3. فلترة بناءً على الـ Multi-Sim
-    if selected_multisim != "All Multi-Sim Status":
-        df_res = df_res[df_res['no_of_multisim'] == selected_multisim]
-        
-    # لو الداتا طلعت فاضية بعد الفلاتر دي كلها
-    if df_res.empty:
-        return 0, 0, 0, "N/A", pd.DataFrame()
-        
-    # 4. حساب المؤشرات الرئيسية (KPIs)
-    inflow_subs = df_res[df_res['movement_type'] == 'INFLOW']['unq_subs'].sum()
-    outflow_subs = df_res[df_res['movement_type'] == 'OUTFLOW']['unq_subs'].sum()
-    net_change = inflow_subs - outflow_subs
-    
-    # 5. معرفة أكثر محافظة تأثراً
-    gov_summary = df_res.groupby('governorate')['unq_subs'].sum().reset_index()
-    if not gov_summary.empty:
-        top_gov = gov_summary.sort_values(by='unq_subs', ascending=False).iloc[0]['governorate']
-    else:
-        top_gov = "N/A"
-        
-    return int(inflow_subs), int(outflow_subs), int(net_change), top_gov, df_res
-
-
-
-
-
-
-
-
-
-
-#========== site logic
-
-#=========== ABS RANKING LAST
-
-
-#=========GPT RANKING BY ABS
-
-def get_top_10_analysis(df_net, target_day, past_dates_list, selected_zone, selected_gov):
-    
-    all_needed_dates = [target_day] + list(past_dates_list)
-    df_filtered = df_net[df_net['rch_day'].isin(all_needed_dates)].copy()
-
-    if selected_zone != "All":
-        df_filtered = df_filtered[df_filtered['market_zone'] == selected_zone]
-    if selected_gov != "All":
-        df_filtered = df_filtered[df_filtered['governorate'] == selected_gov]
-
-    if df_filtered.empty:
-        return None
-
-    df_curr = df_filtered[df_filtered['rch_day'] == target_day]
-    df_past = df_filtered[df_filtered['rch_day'].isin(past_dates_list)]
-
-    if df_curr.empty or df_past.empty:
-        return None
-
-    # past benchmark
-    past_avg = df_past.groupby('site_code')[['unq_subs', 'total_rch_cnt', 'total_rch_amt']].mean().reset_index()
-    past_avg.columns = ['site_code', 'past_subs_avg', 'past_cnt_avg', 'past_amt_avg']
-
-    merged = pd.merge(df_curr, past_avg, on='site_code', how='inner')
-    if merged.empty:
-        return None
-
-    # =========================
-    # ABSOLUTE IMPACT (NEW)
-    # =========================
-    merged['Subs Diff'] = merged['unq_subs'] - merged['past_subs_avg']
-    merged['Count Diff'] = merged['total_rch_cnt'] - merged['past_cnt_avg']
-    merged['Amount Diff'] = merged['total_rch_amt'] - merged['past_amt_avg']
-
-    # =========================
-    # PERCENTAGE CHANGE (DISPLAY ONLY)
-    # =========================
-    merged['Subs Change %'] = (merged['Subs Diff'] / merged['past_subs_avg']) * 100
-    merged['Count Change %'] = (merged['Count Diff'] / merged['past_cnt_avg']) * 100
-    merged['Amount Change %'] = (merged['Amount Diff'] / merged['past_amt_avg']) * 100
-
-    merged = merged.replace([np.inf, -np.inf], np.nan).fillna(0)
-
-    return merged[
-        [
-            'site_code',
-            'Subs Diff', 'Subs Change %',
-            'Count Diff', 'Count Change %',
-            'Amount Diff', 'Amount Change %'
-        ]
-    ]
-
-
-# def get_top_10_analysis(df_net, target_day, past_dates_list, selected_zone, selected_gov):
-#     all_needed_dates = [target_day] + list(past_dates_list)
-#     df_filtered = df_net[df_net['rch_day'].isin(all_needed_dates)].copy()
-
-#     if selected_zone != "All":
-#         df_filtered = df_filtered[df_filtered['market_zone'] == selected_zone]
-#     if selected_gov != "All":
-#         df_filtered = df_filtered[df_filtered['governorate'] == selected_gov]
-
-#     if df_filtered.empty:
-#         return None
-
-#     df_curr = df_filtered[df_filtered['rch_day'] == target_day]
-#     df_past = df_filtered[df_filtered['rch_day'].isin(past_dates_list)]
-
-#     if df_curr.empty or df_past.empty:
-#         return None
-
-#     # past benchmark
-#     past_avg = df_past.groupby('site_code')[['unq_subs', 'total_rch_cnt', 'total_rch_amt']].mean().reset_index()
-#     past_avg.columns = ['site_code', 'past_subs_avg', 'past_cnt_avg', 'past_amt_avg']
-
-#     merged = pd.merge(df_curr, past_avg, on='site_code', how='inner')
-#     if merged.empty:
-#         return None
-
-#     # =========================
-#     # ABSOLUTE IMPACT (NEW)
-#     # =========================
-#     merged['Subs Diff'] = merged['unq_subs'] - merged['past_subs_avg']
-#     merged['Count Diff'] = merged['total_rch_cnt'] - merged['past_cnt_avg']
-#     merged['Amount Diff'] = merged['total_rch_amt'] - merged['past_amt_avg']
-
-#     # =========================
-#     # PERCENTAGE CHANGE (DISPLAY ONLY)
-#     # =========================
-#     merged['Subs Change %'] = (merged['Subs Diff'] / merged['past_subs_avg']) * 100
-#     merged['Count Change %'] = (merged['Count Diff'] / merged['past_cnt_avg']) * 100
-#     merged['Amount Change %'] = (merged['Amount Diff'] / merged['past_amt_avg']) * 100
-
-#     merged = merged.replace([np.inf, -np.inf], np.nan).fillna(0)
-
-#     return merged[
-#         [
-#             'site_code',
-#             'Subs Diff', 'Subs Change %',
-#             'Count Diff', 'Count Change %',
-#             'Amount Diff', 'Amount Change %'
-#         ]
-#     ]
-
-
-
-
-#========= % RANKING
-
-# ب) الفانكشن الحسابية للـ Top 10 (توضع برة خالص وتستقبل المتغيرات العامة)
-# def get_top_10_analysis(df_net, target_day, past_dates_list, selected_zone, selected_gov):
-#     # تجهيز لستة التواريخ المطلوبة للحسبة
-#     all_needed_dates = [target_day] + list(past_dates_list)
-#     df_filtered = df_net[df_net['rch_day'].isin(all_needed_dates)].copy()
-    
-#     # تطبيق الفلاتر المترابطة الممررة من التاب
-#     if selected_zone != "All":
-#         df_filtered = df_filtered[df_filtered['market_zone'] == selected_zone]
-#     if selected_gov != "All":
-#         df_filtered = df_filtered[df_filtered['governorate'] == selected_gov]
-        
-#     if df_filtered.empty:
-#         return None
-
-#     # فصل اليوم الحالي عن الأيام السابقة
-#     df_curr = df_filtered[df_filtered['rch_day'] == target_day]
-#     df_past = df_filtered[df_filtered['rch_day'].isin(past_dates_list)]
-    
-#     # إذا كان اليوم الحالي أو الماضي مش موجود في الداتا شياكة مش هيضرب أيرور
-#     if df_curr.empty or df_past.empty:
-#         return None
-
-#     # حساب متوسط الفترة السابقة لكل سايت كود كـ Benchmark
-#     past_avg = df_past.groupby('site_code')[['unq_subs', 'total_rch_cnt', 'total_rch_amt']].mean().reset_index()
-#     past_avg.columns = ['site_code', 'past_subs_avg', 'past_cnt_avg', 'past_amt_avg']
-    
-#     # دمج اليوم الحالي مع المتوسطات السابقة
-#     merged = pd.merge(df_curr, past_avg, on='site_code', how='inner')
-#     if merged.empty:
-#         return None
-
-#     # معادلات الـ Delta % للـ 3 مقاييس
-#     merged['Subs Change %'] = ((merged['unq_subs'] - merged['past_subs_avg']) / merged['past_subs_avg']) * 100
-#     merged['Count Change %'] = ((merged['total_rch_cnt'] - merged['past_cnt_avg']) / merged['past_cnt_avg']) * 100
-#     merged['Amount Change %'] = ((merged['total_rch_amt'] - merged['past_amt_avg']) / merged['past_amt_avg']) * 100
-    
-#     # شيل السطرين القدام واستبدلهم بدول:
-#     merged = merged.replace([np.inf, -np.inf], np.nan)
-#     merged = merged.fillna(0)
-    
-#     return merged[['site_code', 'Subs Change %', 'Count Change %', 'Amount Change %']]
-
-    # تنظيف من قيم الما لانهاية والأصفار
-    # merged.replace([np.inf, -np.inf], np.nan, inplace=True)
-    # merged.fillna(0, inplace=True)
-    
-    # return merged[['site_code', 'Subs Change %', 'Count Change %', 'Amount Change %']]
-
-
-
-
-
-
-
-
-
-
-
-
-
-#===============RCH MONITORING
-
-
-# --- TAB: OVERALL VIEW ---
-
-
-def f_tab_overall():
+def render_dynamic_detailed_cards(df, date_col, kpis_config):
     st.write("") # Spacer
-# 2. Detailed Cards
+    
+    df = df.copy()
+    df[date_col] = pd.to_datetime(df[date_col])
+    df["temp_phase"] = df[date_col].apply(get_month_phase)
+    
+    target_date_dt = pd.to_datetime(selected_day)
+    curr_row = df[df[date_col] == target_date_dt]
+    
+    if curr_row.empty:
+        st.warning(f"⚠️ No data available for the selected date: {selected_day.date()} in this section.")
+        return
+
     for kpi_name, kpi_col in dict(kpis_config).items():
-        current_val = curr_row[kpi_col].values[0]
+        if kpi_col not in df.columns or kpi_col not in curr_row.columns:
+            continue
+            
+        # 🌟 نجيب القيمة الأصلية الخام من غير أي لعب
+        raw_val = curr_row[kpi_col].values[0]
+        
+        # 🌟 نجهز الرقم التفصيلي بالكامل كـ Integer صريح بالفواصل وبدون (.0) نهائياً
+        full_raw_val = f"{int(round(raw_val)):,}"
+        
+        # اللوجيك الذكي المتكيف حسب الحجم (الكسور تظهر في المليار فقط!)
+        if raw_val >= 1_000_000_000:
+            # 1️⃣ حالة المليار: بنسيب رقمين عشريين براحتهم عشان الدقة (مثال: 2.93 B)
+            formatted_val = f"{round(raw_val / 1_000_000_000, 2):,} B"
+            left_panel_html = f"""
+                <div class="left-panel">
+                    <div class="metric-title">{kpi_name}</div>
+                    <div class="metric-value" style="font-size:24px; line-height:1.1;">{formatted_val}</div>
+                    <div style="font-size:10px; color:#8B949E; margin-top:4px; font-weight:normal; word-break:break-all;">({full_raw_val})</div>
+                </div>
+            """
+        else:
+            # 2️⃣ حالة المليون أو الأقل: يفرش الرقم الأصلي كـ Integer صريح علطول بدون سطر سفلي وبدون كسور
+            left_panel_html = f"""
+                <div class="left-panel">
+                    <div class="metric-title">{kpi_name}</div>
+                    <div class="metric-value" style="font-size:22px; line-height:1.2;">{full_raw_val}</div>
+                </div>
+            """
     
         # =========================================================
-        # الـتـعـديـل الـثـقـيـل: الـمـقـارنـات الـذكـيـة والـمـلـونـة بـنـاءً عـلـى زون الأسـعـار
+        # زون الأسعار
         # =========================================================
         price_update_date = pd.to_datetime("2026-05-05")
 
-        # دالة داخلية سريعة لفحص زون السعر ليوم المقارنة وإعطائه تاغ ملون صغير
         def get_row_phase_tag(target_dt):
+            target_dt = pd.to_datetime(target_dt)
             if target_dt < price_update_date:
                 return '<span style="color: #238636; font-size: 11px; font-weight: 800;">(Pre)</span>'
             elif target_dt == price_update_date:
@@ -704,52 +256,53 @@ def f_tab_overall():
         daily_text, daily_changes = "", []
         for d in range(1, 7):
             target_prev_date = selected_day - timedelta(days=d)
-            prev = df_daily[df_daily["RCH_DAY"] == target_prev_date]
-            if not prev.empty:
+            prev = df[df[date_col] == pd.to_datetime(target_prev_date)]
+            if not prev.empty and kpi_col in prev.columns:
                 v = prev[kpi_col].values[0]
-                growth = round(((current_val - v) / v) * 100, 1)
-                daily_changes.append(growth)
-                color = "green" if growth >= 0 else "red"
-                
-                # جلب التاريخ بصيغة Month/Day وزون السعر بتاعه
-                date_str = target_prev_date.strftime('%m/%d')
-                phase_tag = get_row_phase_tag(target_prev_date)
-                daily_text += f'<div class="movement-line">D-{d} ({date_str}) {phase_tag} : <span class="{color}">{growth}%</span></div>'
+                if v != 0:
+                    growth = round(((raw_val - v) / v) * 100, 1)
+                    daily_changes.append(growth)
+                    color = "green" if growth >= 0 else "red"
+                    
+                    date_str = target_prev_date.strftime('%m/%d')
+                    phase_tag = get_row_phase_tag(target_prev_date)
+                    daily_text += f'<div class="movement-line">D-{d} ({date_str}) {phase_tag} : <span class="{color}">{growth}%</span></div>'
     
         # 2. صندوق نفس يوم الأسبوع (Same Weekday)
         wd_text, wd_changes = "", []
-        same_wd = df_daily[(df_daily["RCH_DAY"].dt.day_name() == weekday_name) & (df_daily["RCH_DAY"] < selected_day)].sort_values("RCH_DAY", ascending=False).head(4)
+        same_wd = df[(df[date_col].dt.day_name() == weekday_name) & (df[date_col] < target_date_dt)].sort_values(date_col, ascending=False).head(4)
         for i, (_, row) in enumerate(same_wd.iterrows(), 1):
-            growth = round(((current_val - row[kpi_col]) / row[kpi_col]) * 100, 1)
-            wd_changes.append(growth)
-            color = "green" if growth >= 0 else "red"
-            
-            # جلب التاريخ وزون السعر بتاعه
-            target_wd_date = pd.to_datetime(row["RCH_DAY"])
-            date_str = target_wd_date.strftime('%m/%d')
-            phase_tag = get_row_phase_tag(target_wd_date)
-            wd_text += f'<div class="movement-line">{weekday_name[:3]}-{i} ({date_str}) {phase_tag} : <span class="{color}">{growth}%</span></div>'
+            if kpi_col in row and row[kpi_col] != 0:
+                v_val = row[kpi_col]
+                growth = round(((raw_val - v_val) / v_val) * 100, 1)
+                wd_changes.append(growth)
+                color = "green" if growth >= 0 else "red"
+                
+                target_wd_date = pd.to_datetime(row[date_col])
+                date_str = target_wd_date.strftime('%m/%d')
+                phase_tag = get_row_phase_tag(target_wd_date)
+                wd_text += f'<div class="movement-line">{weekday_name[:3]}-{i} ({date_str}) {phase_tag} : <span class="{color}">{growth}%</span></div>'
 
         # 3. صندوق يوم الأسبوع + المرحلة (Weekday + Phase)
-        df_daily["temp_phase"] = df_daily["RCH_DAY"].apply(get_month_phase)
         ph_text, ph_changes = "", []
-        ph_df = df_daily[(df_daily["RCH_DAY"].dt.day_name() == weekday_name) & (df_daily["temp_phase"] == month_phase) & (df_daily["RCH_DAY"] < selected_day)].sort_values("RCH_DAY", ascending=False).head(4)
+        ph_df = df[(df[date_col].dt.day_name() == weekday_name) & (df["temp_phase"] == month_phase) & (df[date_col] < target_date_dt)].sort_values(date_col, ascending=False).head(4)
         for i, (_, row) in enumerate(ph_df.iterrows(), 1):
-            growth = round(((current_val - row[kpi_col]) / row[kpi_col]) * 100, 1)
-            ph_changes.append(growth)
-            color = "green" if growth >= 0 else "red"
-            
-            # جلب التاريخ وزون السعر بتاعه
-            target_ph_date = pd.to_datetime(row["RCH_DAY"])
-            date_str = target_ph_date.strftime('%m/%d')
-            phase_tag = get_row_phase_tag(target_ph_date)
-            ph_text += f'<div class="movement-line">{month_phase[:3]}. {weekday_name[:3]}-{i} ({date_str}) {phase_tag} : <span class="{color}">{growth}%</span></div>'
+            if kpi_col in row and row[kpi_col] != 0:
+                v_val = row[kpi_col]
+                growth = round(((raw_val - v_val) / v_val) * 100, 1)
+                ph_changes.append(growth)
+                color = "green" if growth >= 0 else "red"
+                
+                target_ph_date = pd.to_datetime(row[date_col])
+                date_str = target_ph_date.strftime('%m/%d')
+                phase_tag = get_row_phase_tag(target_ph_date)
+                ph_text += f'<div class="movement-line">{month_phase[:3]}. {weekday_name[:3]}-{i} ({date_str}) {phase_tag} : <span class="{color}">{growth}%</span></div>'
 
-        # عرض الكروت والتقسيمات المرئية بنفس التنسيق الأصلي تماماً
+        # رسم الـ UI الشيك
         st.markdown('<div class="kpi-card">', unsafe_allow_html=True)
         m_left, m_right = st.columns([1, 3])
         with m_left:
-            st.markdown(f'<div class="left-panel"><div class="metric-title">{kpi_name}</div><div class="metric-value">{round(current_val,1):,}</div></div>', unsafe_allow_html=True)
+            st.markdown(left_panel_html, unsafe_allow_html=True)
         with m_right:
             s1, s2, s3 = st.columns(3)
             with s1: st.markdown(f'<div class="text-box"><div class="section-title">Daily Movement</div>{daily_text}<div class="trend-text">{detect_trend(daily_changes)}</div></div>', unsafe_allow_html=True)
@@ -767,396 +320,612 @@ def f_tab_overall():
 
 
 
-# ----------------- TAB 2: ALERTS -----------------
 
 
 
-def f_tab_alerts():
-    alerts_df = get_alerts_logic(df_raw, selected_day)
+
+
+
+
+#==   2. TAB ALERTS
+
+
+# =========================================================
+# 2. ALERTS TABS
+# =========================================================
+
+
+
+
+
+
+def get_dynamic_alerts(df_raw, date_col, dimensions, metrics_map, thresholds=[3, 5, 10, 20]):
+    """
+    Dynamic Alerts Engine with Automatic Combinations & Flexible Thresholds.
+    thresholds list format: [min_visible, watch_limit, warning_limit, critical_limit]
+    Default: [3, 5, 10, 20]
+    """
+    # حساب تاريخ امبارح بناءً على التاريخ المستهدف
+    target_date = pd.to_datetime(selected_day)
+    prev_date = target_date - timedelta(days=1)
     
+    df_raw = df_raw.copy()
+    df_raw[date_col] = pd.to_datetime(df_raw[date_col])
+    
+    curr = df_raw[df_raw[date_col] == target_date]
+    prev = df_raw[df_raw[date_col] == prev_date]
+    
+    if curr.empty or prev.empty: 
+        return pd.DataFrame()
+
+    # 🧠 الـ Combinatorics الذكي: توليد كل الاحتمالات الممكنة رياضياً أوتوماتيكياً
+    all_combinations = []
+    for r in range(1, len(dimensions) + 1):
+        for combo in combinations(dimensions, r):
+            all_combinations.append(list(combo))
+            
+    # استخراج أسماء أعمدة المقاييس من الخريطة (الـ Keys والـ Values)
+    metric_cols = list(metrics_map.keys())
+    results = []
+
+    # الـ Loop الكبيرة بتلف على كل الاحتمالات الناتجة
+    for cols in all_combinations:
+        # التأكد إن العواميد دي موجودة فعلاً في الجداول الممررة
+        if not all(c in curr.columns and c in prev.columns for c in cols):
+            continue
+            
+        curr_g = curr.groupby(cols)[metric_cols].sum().reset_index()
+        prev_g = prev.groupby(cols)[metric_cols].sum().reset_index()
+        
+        merged = curr_g.merge(prev_g, on=cols, suffixes=('_c', '_p'))
+        
+        # تفكيك السلم المرن الممرر
+        min_v, watch_v, warn_v, crit_v = thresholds
+        
+        for _, row in merged.iterrows():
+            # دمج اسم الشريحة شياكة
+            segment_name = " | ".join([str(row[c]) for c in cols])
+            
+            for col_key, display_name in metrics_map.items():
+                p_val = row[f"{col_key}_p"]
+                c_val = row[f"{col_key}_c"]
+                
+                if p_val > 0:
+                    growth = ((c_val - p_val) / p_val) * 100
+                    abs_g = abs(growth)
+                    
+                    if abs_g >= min_v: # الحد الأدنى للظهور
+                        # تطبيق السلم الديناميكي المرن
+                        if abs_g < watch_v: 
+                            level = "Normal"
+                        elif watch_v <= abs_g < warn_v: 
+                            level = "Watch"
+                        elif warn_v <= abs_g < crit_v: 
+                            level = "Warning"
+                        else: 
+                            level = "Critical"
+                        
+                        results.append({
+                            "segment": segment_name,
+                            "metric": display_name, 
+                            "growth": round(growth, 1),
+                            # التخلص من الكسور العشرية للأرقام الصحيحة النظيفة
+                            "current_val": int(round(c_val)),
+                            "previous_val": int(round(p_val)),
+                            "level": level, 
+                            "direction": "Drop" if growth < 0 else "Up"
+                        })
+                        
+    #return pd.DataFrame(results)
+    # 🎯 التعديل السحري هنا: تحويل لـ DataFrame والترتيب المطلق
+    df_final = pd.DataFrame(results)
+    
+    if not df_final.empty:
+        # خلق عمود وهمي فيه القيمة المطلقة للـ Growth عشان نرتب بيه
+        df_final["abs_growth"] = df_final["growth"].abs()
+        
+        # ترتيب تنازلي من الأكبر للأصغر (عشان الـ Critical والـ Warning يطيروا فوق)
+        df_final = df_final.sort_values(by="abs_growth", ascending=False)
+        
+        # تنظيف العمود المؤقت وعمل ريست للأندكس
+        df_final = df_final.drop(columns=["abs_growth"]).reset_index(drop=True)
+        
+    return df_final
+    
+
+
+
+
+
+
+
+
+
+def render_alerts_center_ui(alerts_df):
+    """
+    Renders a unified, highly polished executive Alerts Center Dashboard.
+    Matches exactly the user's original layout and dark theme specifications.
+    """
     if alerts_df.empty:
-        st.success("✅ System is Stable - All metrics within normal range.")
-    else:
-        st.warning(f"⚠️ System detected {len(alerts_df)} deviations for the selected date.")
+        st.info("ℹ️ No data or deviations detected for the selected date.")
+        return
         
-        drops = alerts_df[alerts_df["direction"] == "Drop"].sort_values("growth")
-        ups = alerts_df[alerts_df["direction"] == "Up"].sort_values("growth", ascending=False)
-
-        st.markdown(f"""
-        <div class="alert-summary-container">
-            <div style="text-align:center; flex:1;">
-                <span style="font-size:38px; font-weight:800; color:#DA3633;">{len(drops)}</span><br/>
-                <small style="color:#8B949E;">DROPS DETECTED</small>
-            </div>
-            <div style="text-align:center; flex:1; border-left:1px solid #30363D;">
-                <span style="font-size:38px; font-weight:800; color:#238636;">{len(ups)}</span><br/>
-                <small style="color:#8B949E;">UPS DETECTED</small>
-            </div>
+    # 1. فصل الداتا للإحصائيات الإجمالية
+    drops_df = alerts_df[alerts_df["direction"] == "Drop"]
+    ups_df = alerts_df[alerts_df["direction"] == "Up"]
+    
+    total_deviations = len(alerts_df)
+    total_drops = len(drops_df)
+    total_ups = len(ups_df)
+    
+    # 2. الصندوق العلوي الكبير (Total Deviations Banner)
+    st.markdown(f"""
+        <div style="background-color: #1F190D; border-left: 5px solid #F2CC60; padding: 15px; border-radius: 6px; margin-bottom: 20px;">
+            <span style="color: #F2CC60; font-size: 18px; font-weight: bold; margin-right: 8px;">⚠️</span>
+            <span style="color: #E6EDF2; font-size: 15px; font-weight: 500;">System detected {total_deviations} deviations for the selected date.</span>
         </div>
+    """, unsafe_allow_html=True)
+    
+    # 3. الـ Split الكبيرة (صندوق الـ Drops وصندوق الـ Ups جنب بعض)
+    col_left, col_right = st.columns(2)
+    
+    with col_left:
+        st.markdown(f"""
+            <div style="background-color: #161B22; border: 1px solid #30363D; border-radius: 8px; padding: 25px; text-align: center; height: 140px;">
+                <div style="color: #DA3633; font-size: 36px; font-weight: 800; line-height: 1.2;">{total_drops}</div>
+                <div style="color: #8B949E; font-size: 12px; font-weight: bold; letter-spacing: 0.5px; margin-top: 5px;">DROPS DETECTED</div>
+            </div>
         """, unsafe_allow_html=True)
-
-        t_drops_main, t_ups_main = st.tabs(["📉 DROPS ANALYSIS", "📈 UPS ANALYSIS"])
         
-        with t_drops_main:
-            show_alerts(drops, True)
-        with t_ups_main:
-            show_alerts(ups, False)
-
-
-
-
-
-
-
-
-
-# ----------------- TAB 3: ALERTS V2 (CONTRIBUTION WITH DUAL INTERNAL FILTERS) -----------------
-
-
-def f_tab_alerts_v2():
-    st.markdown('<div class="section-header">🎯 Contribution Alerts Center (V2)</div>', unsafe_allow_html=True)
-    st.write("Advanced analysis using absolute changes and smart seasonality matching to identify actual business drivers.")
+    with col_right:
+        st.markdown(f"""
+            <div style="background-color: #161B22; border: 1px solid #30363D; border-radius: 8px; padding: 25px; text-align: center; height: 140px;">
+                <div style="color: #238636; font-size: 36px; font-weight: 800; line-height: 1.2;">{total_ups}</div>
+                <div style="color: #8B949E; font-size: 12px; font-weight: bold; letter-spacing: 0.5px; margin-top: 5px;">UPS DETECTED</div>
+            </div>
+        """, unsafe_allow_html=True)
+        
+    st.write("") # Spacer
     
-    # عمل صف فيه فلاتر التحكم الداخلي جنب بعض شياكة
-    col_filt1, col_filt2 = st.columns(2)
+    # 4. الـ Main Tabs (DROPS ANALYSIS vs UPS ANALYSIS)
+    main_tabs = st.tabs(["📉 DROPS ANALYSIS", "📈 UPS ANALYSIS"])
+    levels_order = ["Critical", "Warning", "Watch", "Normal"]
     
-    with col_filt1:
-        # 1. فلتر وضع المقارنة (الـ 3 خيارات بتوعك)
+    # --- التبويب الأول: Drops ---
+    with main_tabs[0]:
+        if drops_df.empty:
+            st.info("No drop alerts found.")
+        else:
+            # الـ Sub Tabs الفرعية للفلات السلم جوه الـ Drops
+            sub_tabs_drop = st.tabs([f"{l} ({len(drops_df[drops_df['level']==l])})" for l in levels_order])
+            for idx, lvl in enumerate(levels_order):
+                with sub_tabs_drop[idx]:
+                    subset = drops_df[drops_df["level"] == lvl]
+                    if subset.empty:
+                        st.info(f"No {lvl} drop alerts found.")
+                    else:
+                        for _, r in subset.iterrows():
+                            st.markdown(f"""
+                            <div class="alert-card drop-card" style="background-color: #161B22; border: 1px solid #30363D; border-left: 4px solid #DA3633; padding: 15px; border-radius: 6px; margin-bottom: 12px; position: relative;">
+                                <span style="float: right; color: #DA3633; font-weight: 800; font-size: 16px;">
+                                    ▼ {abs(r['growth'])}%
+                                </span>
+                                <div style="font-weight: 700; color: #F0F6FC; font-size: 15px; margin-bottom: 6px; padding-right: 80px;">{r['segment']}</div>
+                                <div style="font-size: 13px; color: #8B949E; margin-bottom: 10px;">
+                                    Current: <b style="color: #C9D1D9;">{r['current_val']:,}</b> | Previous: <b style="color: #C9D1D9;">{r['previous_val']:,}</b>
+                                </div>
+                                <span class="metric-tag" style="background-color: #21262D; color: #8B949E; font-size: 11px; padding: 4px 8px; border-radius: 4px; font-weight: 600;">Metric: {r['metric']}</span>
+                            </div>
+                            """, unsafe_allow_html=True)
+
+    # --- التبويب الثاني: Ups ---
+    with main_tabs[1]:
+        if ups_df.empty:
+            st.info("No up alerts found.")
+        else:
+            # الـ Sub Tabs الفرعية للفلات السلم جوه الـ Ups
+            sub_tabs_up = st.tabs([f"{l} ({len(ups_df[ups_df['level']==l])})" for l in levels_order])
+            for idx, lvl in enumerate(levels_order):
+                with sub_tabs_up[idx]:
+                    subset = ups_df[ups_df["level"] == lvl]
+                    if subset.empty:
+                        st.info(f"No {lvl} up alerts found.")
+                    else:
+                        for _, r in subset.iterrows():
+                            st.markdown(f"""
+                            <div class="alert-card up-card" style="background-color: #161B22; border: 1px solid #30363D; border-left: 4px solid #238636; padding: 15px; border-radius: 6px; margin-bottom: 12px; position: relative;">
+                                <span style="float: right; color: #238636; font-weight: 800; font-size: 16px;">
+                                    ▲ {abs(r['growth'])}%
+                                </span>
+                                <div style="font-weight: 700; color: #F0F6FC; font-size: 15px; margin-bottom: 6px; padding-right: 80px;">{r['segment']}</div>
+                                <div style="font-size: 13px; color: #8B949E; margin-bottom: 10px;">
+                                    Current: <b style="color: #C9D1D9;">{r['current_val']:,}</b> | Previous: <b style="color: #C9D1D9;">{r['previous_val']:,}</b>
+                                </div>
+                                <span class="metric-tag" style="background-color: #21262D; color: #8B949E; font-size: 11px; padding: 4px 8px; border-radius: 4px; font-weight: 600;">Metric: {r['metric']}</span>
+                            </div>
+                            """, unsafe_allow_html=True)
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+#==   2. TAB contribution_alerts
+
+
+# =========================================================
+# 2. contribution_alerts TABS
+# =========================================================
+
+
+
+
+
+
+
+def get_dynamic_contribution_alerts(df_raw, df_global, date_col, dimensions, metrics_map, global_metrics_map, thresholds=[5, 15, 30], comp_mode="vs Yesterday (D-1)", selected_day=None):
+    """
+    Dynamic Contribution Engine (Root Cause Analysis V5).
+    Guarantees perfect subscriber uniqueness by explicitly mapping df_raw columns to df_global columns.
+    """
+    if selected_day is None:
+        return pd.DataFrame()
+        
+    target_date = pd.to_datetime(selected_day)
+    
+    def get_phase(dt):
+        day = dt.day
+        if 1 <= day <= 7: return "Salary Period"
+        elif 8 <= day <= 15: return "Mid-Month"
+        elif 16 <= day <= 22: return "Late-Mid"
+        else: return "End-Month"
+
+    if comp_mode == "vs Yesterday (D-1)":
+        prev_date = target_date - timedelta(days=1)
+    elif comp_mode == "vs Same Day Last Week (D-7)":
+        prev_date = target_date - timedelta(days=7)
+    else:
+        target_weekday = target_date.weekday()
+        target_phase = get_phase(target_date)
+        found = False
+        weeks_back = 1
+        while weeks_back <= 6:
+            check_date = target_date - timedelta(days=7 * weeks_back)
+            if check_date.weekday() == target_weekday and get_phase(check_date) == target_phase:
+                prev_date = check_date
+                found = True
+                break
+            weeks_back += 1
+        if not found:
+            prev_date = target_date - timedelta(days=28)
+
+    df_raw = df_raw.copy()
+    df_raw[date_col] = pd.to_datetime(df_raw[date_col])
+    curr = df_raw[df_raw[date_col] == target_date]
+    prev = df_raw[df_raw[date_col] == prev_date]
+    
+    df_global = df_global.copy()
+    df_global[date_col] = pd.to_datetime(df_global[date_col])
+    global_curr = df_global[df_global[date_col] == target_date]
+    global_prev = df_global[df_global[date_col] == prev_date]
+    
+    if curr.empty or prev.empty or global_curr.empty or global_prev.empty: 
+        return pd.DataFrame()
+
+    # 🧠 هنا السحر: حساب الـ Total Network Move الحقيقي بناءً على الماب الصريحة للـ Global
+    global_diffs = {}
+    for col_raw, col_global in global_metrics_map.items():
+        display_name = metrics_map[col_raw]
+        if col_global in global_curr.columns and col_global in global_prev.columns:
+            c_tot = global_curr[col_global].values[0]
+            p_tot = global_prev[col_global].values[0]
+            global_diffs[display_name] = c_tot - p_tot
+        else:
+            global_diffs[display_name] = 0
+
+    all_combinations = []
+    for r in range(1, len(dimensions) + 1):
+        for combo in combinations(dimensions, r):
+            all_combinations.append(list(combo))
+            
+    metric_cols = list(metrics_map.keys())
+    results = []
+
+    for cols in all_combinations:
+        if not all(c in curr.columns and c in prev.columns for c in cols):
+            continue
+            
+        curr_g = curr.groupby(cols)[metric_cols].sum().reset_index()
+        prev_g = prev.groupby(cols)[metric_cols].sum().reset_index()
+        
+        merged = curr_g.merge(prev_g, on=cols, suffixes=('_c', '_p'))
+        
+        min_v, major_v, primary_v = thresholds
+        
+        for _, row in merged.iterrows():
+            segment_name = " | ".join([str(row[c]) for c in cols])
+            
+            for col_key, display_name in metrics_map.items():
+                p_val = row[f"{col_key}_p"]
+                c_val = row[f"{col_key}_c"]
+                
+                seg_diff = c_val - p_val
+                tot_diff = global_diffs[display_name]
+                
+                if tot_diff == 0: 
+                    continue
+                
+                contribution_pct = round((seg_diff / abs(tot_diff)) * 100, 1)
+                abs_contrib = abs(contribution_pct)
+                
+                if abs_contrib >= min_v:
+                    if abs_contrib < major_v:
+                        level = "Minor Contributor"
+                    elif major_v <= abs_contrib < primary_v:
+                        level = "Major Contributor"
+                    else:
+                        level = "Primary Driver"
+                        
+                    segment_direction = "Increase" if seg_diff > 0 else "Decline"
+                    
+                    results.append({
+                        "segment": segment_name,
+                        "metric": display_name, 
+                        "contribution": abs_contrib,
+                        "seg_diff": round(seg_diff, 1),
+                        "tot_diff": round(tot_diff, 1),
+                        "current_val": round(c_val, 1),
+                        "previous_val": round(p_val, 1),
+                        "level": level, 
+                        "network_direction": segment_direction,
+                        "compared_to_date": prev_date.strftime('%Y-%m-%d')
+                    })
+                        
+    #return pd.DataFrame(results)
+    # 🔥 الحتة السحرية الجديدة للترتيب التنازلي المظبوط 🔥
+    df_final = pd.DataFrame(results)
+    if not df_final.empty:
+        # بنرتب الداتا تنازلياً من الكبير للصغير بناءً على رقم الـ contribution نفسه
+        df_final = df_final.sort_values(by="contribution", ascending=False).reset_index(drop=True)
+        
+    return df_final
+
+
+
+
+
+
+
+
+
+
+def render_contribution_center_ui(contribution_df, comp_mode="vs Yesterday (D-1)", selected_day=None):
+    if contribution_df.empty:
+        st.info("ℹ️ No continuous business drivers or deviations detected for the filters selected.")
+        return
+        
+    baseline_date = contribution_df["compared_to_date"].iloc[0]
+    target_date_str = selected_day if isinstance(selected_day, str) else selected_day.strftime('%Y-%m-%d')
+    
+    st.markdown(f"""
+        <div style="background-color: #1F190D; border-left: 5px solid #F2CC60; padding: 12px 15px; border-radius: 6px; margin-bottom: 20px;">
+            <span style="color: #F2CC60; font-size: 16px; font-weight: bold; margin-right: 6px;">💡</span>
+            <span style="color: #E6EDF2; font-size: 14px; font-weight: 500;">
+                Currently matching data of <b>{target_date_str}</b> against historical baseline date: <b>{baseline_date}</b> ({comp_mode})
+            </span>
+        </div>
+    """, unsafe_allow_html=True)
+    
+    decline_df = contribution_df[contribution_df["network_direction"] == "Decline"]
+    increase_df = contribution_df[contribution_df["network_direction"] == "Increase"]
+    
+    total_declines = len(decline_df)
+    total_increases = len(increase_df)
+    
+    col_left, col_right = st.columns(2)
+    with col_left:
+        st.markdown(f"""
+            <div style="background-color: #161B22; border: 1px solid #30363D; border-radius: 8px; padding: 25px; text-align: center; height: 130px;">
+                <div style="color: #DA3633; font-size: 36px; font-weight: 800; line-height: 1.2;">{total_declines}</div>
+                <div style="color: #8B949E; font-size: 11px; font-weight: bold; letter-spacing: 0.5px; margin-top: 5px;">DRIVERS OF DECLINE (Filtered KPIs)</div>
+            </div>
+        """, unsafe_allow_html=True)
+        
+    with col_right:
+        st.markdown(f"""
+            <div style="background-color: #161B22; border: 1px solid #30363D; border-radius: 8px; padding: 25px; text-align: center; height: 130px;">
+                <div style="color: #238636; font-size: 36px; font-weight: 800; line-height: 1.2;">{total_increases}</div>
+                <div style="color: #8B949E; font-size: 11px; font-weight: bold; letter-spacing: 0.5px; margin-top: 5px;">DRIVERS OF INCREASE (Filtered KPIs)</div>
+            </div>
+        """, unsafe_allow_html=True)
+        
+    st.write("") 
+    
+    main_tabs = st.tabs(["📉 DRIVERS OF DECLINE ANALYSIS", "📈 DRIVERS OF INCREASE ANALYSIS"])
+    levels_order = ["Primary Driver", "Major Contributor", "Minor Contributor"]
+    
+    with main_tabs[0]:
+        if decline_df.empty:
+            st.info("No drivers of decline found for this view.")
+        else:
+            sub_tabs = st.tabs([f"🎯 {l} ({len(decline_df[decline_df['level']==l])})" for l in levels_order])
+            for idx, lvl in enumerate(levels_order):
+                with sub_tabs[idx]:
+                    subset = decline_df[decline_df["level"] == lvl]
+                    if subset.empty:
+                        st.info(f"No {lvl} decline factors found.")
+                    else:
+                        for _, r in subset.iterrows():
+                            color = "#DA3633" if lvl == "Primary Driver" else ("#E36209" if lvl == "Major Contributor" else "#F2CC60")
+                            st.markdown(f"""
+                            <div class="alert-card" style="background-color: #161B22; border: 1px solid #30363D; border-left: 5px solid {color}; padding: 15px; border-radius: 6px; margin-bottom: 12px;">
+                                <span style="float: right; color: {color}; font-weight: 800; font-size: 16px;">
+                                    Share: {r['contribution']}%
+                                </span>
+                                <div style="font-weight: 700; color: #F0F6FC; font-size: 15px; margin-bottom: 6px;">{r['segment']}</div>
+                                <div style="font-size: 13px; color: #8B949E; margin-bottom: 10px;">
+                                    Segment Move: <b style="color: #DA3633;">▼ {abs(r['seg_diff']):,}</b> &nbsp;|&nbsp; Total Network Move: <b style="color: #C9D1D9;">{r['tot_diff']:,}</b>
+                                </div>
+                                <span class="metric-tag" style="background-color: #21262D; color: #8B949E; font-size: 11px; padding: 4px 8px; border-radius: 4px; font-weight: 600; margin-right: 6px;">Metric: {r['metric']}</span>
+                                <span style="color: {color}; font-size: 11px; font-weight: bold;">{lvl}</span>
+                            </div>
+                            """, unsafe_allow_html=True)
+
+    with main_tabs[1]:
+        if increase_df.empty:
+            st.info("No drivers of increase found for this view.")
+        else:
+            sub_tabs = st.tabs([f"🎯 {l} ({len(increase_df[increase_df['level']==l])})" for l in levels_order])
+            for idx, lvl in enumerate(levels_order):
+                with sub_tabs[idx]:
+                    subset = increase_df[increase_df["level"] == lvl]
+                    if subset.empty:
+                        st.info(f"No {lvl} increase factors found.")
+                    else:
+                        for _, r in subset.iterrows():
+                            color = "#238636" if lvl == "Primary Driver" else ("#E36209" if lvl == "Major Contributor" else "#F2CC60")
+                            st.markdown(f"""
+                            <div class="alert-card" style="background-color: #161B22; border: 1px solid #30363D; border-left: 5px solid {color}; padding: 15px; border-radius: 6px; margin-bottom: 12px;">
+                                <span style="float: right; color: {color}; font-weight: 800; font-size: 16px;">
+                                    Share: {r['contribution']}%
+                                </span>
+                                <div style="font-weight: 700; color: #F0F6FC; font-size: 15px; margin-bottom: 6px;">{r['segment']}</div>
+                                <div style="font-size: 13px; color: #8B949E; margin-bottom: 10px;">
+                                    Segment Move: <b style="color: #238636;">▲ {abs(r['seg_diff']):,}</b> &nbsp;|&nbsp; Total Network Move: <b style="color: #C9D1D9;">{r['tot_diff']:,}</b>
+                                </div>
+                                <span class="metric-tag" style="background-color: #21262D; color: #8B949E; font-size: 11px; padding: 4px 8px; border-radius: 4px; font-weight: 600; margin-right: 6px;">Metric: {r['metric']}</span>
+                                <span style="color: {color}; font-size: 11px; font-weight: bold;">{lvl}</span>
+                            </div>
+                            """, unsafe_allow_html=True)
+
+
+
+
+
+
+
+
+
+
+
+
+def render_contribution_section(df_raw, df_global, date_col, dimensions, metrics_map, global_metrics_map, thresholds=[5, 15, 30], selected_day=None, prefix="rch"):
+    """
+    Unified Contribution Center Section.
+    Added 'prefix' to dynamically generate unique keys per section.
+    """
+    col_filter_left, col_filter_right = st.columns(2)
+
+    with col_filter_left:
+        # 🧠 الـ key هنا بقى ديناميكي ومتغير حسب الـ prefix
         selected_comp_mode = st.selectbox(
-            "📅 Select Comparison Basis (Seasonality):",
-            options=[
-                "vs Yesterday (D-1)", 
-                "vs Same Day Last Week (D-7)", 
-                "vs Same Weekday & Month Phase (Smart Match)"
-            ],
-            key="v2_comp_mode_filter"
+            "📅 Select Comparison Basis (Seasonality):", 
+            ["vs Yesterday (D-1)", "vs Same Day Last Week (D-7)", "vs Same Weekday & Month Phase (Smart Match)"],
+            key=f"{prefix}_contrib_seasonality_internal_key"
         )
-        
-    # استدعاء الداتا من المطبخ وتمرير وضع المقارنة المختار
-    alerts_v2_df = get_alerts_logic_v2(df_raw, selected_day, selected_comp_mode)
+
+    with col_filter_right:
+        kpi_dropdown_options = ["All KPIs"] + list(metrics_map.values())
+        # 🧠 والـ key ده كمان بقى ديناميكي ومستحيل يتكرر
+        selected_kpi_filter = st.selectbox(
+            "🔍 Filter Alerts by KPI:", 
+            kpi_dropdown_options,
+            key=f"{prefix}_contrib_kpi_filter_internal_key"
+        )
+
+    # باقي كود الدالة المايسترو بيكمل تحت زي ما هو بالظبط...
+
+
+    df_results = get_dynamic_contribution_alerts(
+        df_raw=df_raw,         
+        df_global=df_global,    
+        date_col=date_col,             
+        dimensions=dimensions, 
+        metrics_map=metrics_map,
+        global_metrics_map=global_metrics_map,
+        thresholds=thresholds,         
+        comp_mode=selected_comp_mode,   
+        selected_day=selected_day       
+    )
+
+    if not df_results.empty and selected_kpi_filter != "All KPIs":
+        df_results = df_results[df_results["metric"] == selected_kpi_filter]
+
+    render_contribution_center_ui(
+        contribution_df=df_results, 
+        comp_mode=selected_comp_mode,
+        selected_day=selected_day
+    )
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+#==================================
+# IBRO
+#==================================
+
+
+
+
+import pandas as pd
+import streamlit as st
+import plotly.express as px
+import plotly.graph_objects as go
+
+def process_behavioral_data_dynamic(df_day_filtered, chosen_filters):
+    """
+    الدالة المحركة (Engine): تقوم بفلترة البيانات ديناميكياً بناءً على قاموس الفلاتر الممرر،
+    ثم تحسب المؤشرات الرئيسية (KPIs) وأكثر محافظة تعرضت لنزيف الخطوط.
+    """
+    # حماية: لو الداتا الأساسية فاضية من الأول
+    if df_day_filtered.empty:
+        return 0, 0, 0, pd.DataFrame()
+
+    df_res = df_day_filtered.copy()
     
-    if alerts_v2_df.empty:
-        st.success(f"✅ No major contribution spikes detected for the selected mode: {selected_comp_mode}.")
-    else:
-        with col_filt2:
-            # 2. فلتر الـ KPIs
-            available_metrics = ["All KPIs"] + list(alerts_v2_df["metric"].unique())
-            selected_metric_filter = st.selectbox(
-                "🔍 Filter Alerts by KPI:",
-                options=available_metrics,
-                key="v2_internal_kpi_filter"
-            )
-            
-        # إظهار تاريخ اليوم اللي السيستم لقطه وقارن بيه عشان اليوزر يبقى مطمئن وعارف هو بيبص على إيه
-        matched_date_str = alerts_v2_df["compared_to_date"].iloc[0]
-        st.caption(f"💡 *Currently matching data of **{selected_day.strftime('%Y-%m-%d')}** against historical baseline date: **{matched_date_str}** ({selected_comp_mode})*")
-
-        # تطبيق فلتر الـ KPI لو اليوزر اختار مؤشر معين
-        if selected_metric_filter != "All KPIs":
-            filtered_alerts_df = alerts_v2_df[alerts_v2_df["metric"] == selected_metric_filter]
-        else:
-            filtered_alerts_df = alerts_v2_df
-
-        # إعادة تقسيم التنبيهات المفلترة بناءً على اتجاه الحركة
-        decline_drivers = filtered_alerts_df[filtered_alerts_df["network_direction"] == "Decline"].sort_values("contribution", ascending=False)
-        increase_drivers = filtered_alerts_df[filtered_alerts_df["network_direction"] == "Increase"].sort_values("contribution", ascending=False)
-
-        # عرض العدادات المجمعة الذكية
-        st.markdown(f"""
-        <div class="alert-summary-container">
-            <div style="text-align:center; flex:1;">
-                <span style="font-size:38px; font-weight:800; color:#DA3633;">{len(decline_drivers)}</span><br/>
-                <small style="color:#8B949E;">DRIVERS OF DECLINE ({selected_metric_filter})</small>
-            </div>
-            <div style="text-align:center; flex:1; border-left:1px solid #30363D;">
-                <span style="font-size:38px; font-weight:800; color:#238636;">{len(increase_drivers)}</span><br/>
-                <small style="color:#8B949E;">DRIVERS OF INCREASE ({selected_metric_filter})</small>
-            </div>
-        </div>
-        """, unsafe_allow_html=True)
-
-        # عرض الكروت المفلترة جوه الـ Tabs الداخلية
-        t_decline, t_increase = st.tabs(["📉 DRIVERS OF DECLINE ANALYSIS", "📈 DRIVERS OF INCREASE ANALYSIS"])
+    # 1. تطبيق الفلاتر الديناميكية الممررة بالـ Loop
+    for col, val in chosen_filters.items():
+        if val != "All" and col in df_res.columns:
+            df_res = df_res[df_res[col] == val]
         
-        with t_decline:
-            if decline_drivers.empty:
-                st.info(f"No segments detected as drivers for decline under ({selected_metric_filter}).")
-            else:
-                show_contribution_alerts(decline_drivers)
-                
-        with t_increase:
-            if increase_drivers.empty:
-                st.info(f"No segments detected as drivers for increase under ({selected_metric_filter}).")
-            else:
-                show_contribution_alerts(increase_drivers)
-
-
-
-
-
-
-
-
-# ----------------- TAB 4: IBRO BEHAVIORAL DATA CENTER (EXECUTIVE PREMIUM) -----------------
-def f_tab_ibro():
-    st.markdown('<div class="section-header">🚀 IBRO Behavioral Data Center</div>', unsafe_allow_html=True)
+    # لو الداتا طلعت فاضية بعد الفلاتر
+    if df_res.empty:
+        return 0, 0, 0, pd.DataFrame()
+        
+    # 2. حساب المؤشرات الرئيسية (KPIs)
+    inflow_subs = df_res[df_res['movement_type'] == 'INFLOW']['unq_subs'].sum()
+    outflow_subs = df_res[df_res['movement_type'] == 'OUTFLOW']['unq_subs'].sum()
+    net_change = inflow_subs - outflow_subs
     
-    # 1. الحماية الأولى: التأكد أن الداتا فريم مش فاضي وقادم من الجوجل شيت بنجاح
-    if 'df_ibro' in globals() and not df_ibro.empty:
-    #if 'df_ibro' in locals() and not df_ibro.empty:
-
-        
-        # تحويل عمود التاريخ لنصوص لضمان دقة المقارنة
-        df_ibro_clean = df_ibro.copy()
-        df_ibro_clean['reported_date_str'] = pd.to_datetime(df_ibro_clean['reported_date']).dt.strftime('%Y-%m-%d')
-        target_date_str = pd.to_datetime(selected_day).strftime('%Y-%m-%d')
-        
-        # تصفية البيانات المبدئية لليوم المختار فقط
-        df_day_base = df_ibro_clean[df_ibro_clean['reported_date_str'] == target_date_str]
-        
-        # 2. اللوجيك الذكي للعرض لو اليوم ده جواه داتا فعلاً
-        if not df_day_base.empty:
-            
-            st.markdown("#### 🎛️ Dashboard Controls")
-            # 3 فلاتر تكتيكية في صف واحد
-            col_f1, col_f2, col_f3 = st.columns(3)
-            with col_f1:
-                mode_options = sorted(list(df_day_base['mode'].unique()))
-                chosen_mode = st.selectbox("🔄 Time Window (Mode):", options=mode_options, index=0, key="apro_mode_v9")
-            with col_f2:
-                segment_options = ["All Segments"] + sorted(list(df_day_base['tariff_sub_category_2'].unique()))
-                chosen_segment = st.selectbox("👥 Customer Segment:", options=segment_options, index=0, key="apro_seg_v9")
-            with col_f3:
-                multisim_options = ["All Multi-Sim Status"] + sorted(list(df_day_base['no_of_multisim'].unique()))
-                chosen_multisim = st.selectbox("📱 Multi-Sim Status:", options=multisim_options, index=0, key="apro_multi_v9")
-            
-            st.write("---") # خط فاصل
-            
-            # 🚀 3. استدعاء الفانكشن التحليلية لتجهيز البيانات
-            inflow, outflow, net, _, df_final_chart = process_behavioral_data_v2(
-                df_day_base, chosen_mode, chosen_segment, chosen_multisim
-            )
-            
-            # 🧠 💡 لوجيك الـ Most Affected Gov الجديد والمطور:
-            # بنحسب الصافي لكل محافظة عشان نطلع أكتر واحدة بتنزف صافي خطوط فعلياً (أعلى رقم سالب)
-            if not df_final_chart.empty:
-                df_gov_calc = df_final_chart.copy()
-                df_gov_calc['signed_subs'] = df_gov_calc.apply(
-                    lambda r: r['unq_subs'] if r['movement_type'] == 'INFLOW' else -r['unq_subs'], axis=1
-                )
-                df_gov_net_sum = df_gov_calc.groupby('governorate')['signed_subs'].sum().reset_index()
-                
-                # المحافظات اللي بتخسر (صافي سالب)
-                df_only_losers = df_gov_net_sum[df_gov_net_sum['signed_subs'] < 0]
-                if not df_only_losers.empty:
-                    # اختيار المحافظة صاحبة أصغر رقم (أعلى خسارة في النزيف الصافي)
-                    worst_row = df_only_losers.sort_values(by='signed_subs', ascending=True).iloc[0]
-                    executive_affected_gov = f"📍 {worst_row['governorate']} ({worst_row['signed_subs']:,})"
-                else:
-                    executive_affected_gov = "No Net Leakage"
-            else:
-                executive_affected_gov = "No Data"
-            
-            # 📊 4. فرش كروت الـ KPIs بتصميم ناصع وواضح جداً (Bold وخطوط واضحة)
-            st.markdown(f"##### 📈 KPIs Overview for **{target_date_str}**")
-            
-            # كود CSS لحقن ستايل الكروت وتفتيح الكلام وتكبير الأرقام
-            st.markdown("""
-                <style>
-                    [data-testid="stMetricLabel"] { font-size: 14px !important; font-weight: bold !important; color: #ffffff !important; }
-                    [data-testid="stMetricValue"] { font-size: 24px !important; font-weight: 900 !important; color: #00ffcc !important; }
-                    [data-testid="stMetricDelta"] { font-size: 18px !important; font-weight: bold !important; }
-                </style>
-            """, unsafe_allow_html=True)
-            
-            kpi_1, kpi_2, kpi_3, kpi_4 = st.columns(4)
-            with kpi_1:
-                st.metric(label="🟢 Total Inflow Subs", value=f"{inflow:,}")
-            with kpi_2:
-                st.metric(label="🔴 Total Outflow Subs", value=f"{outflow:,}")
-            with kpi_3:
-                delta_color = "normal" if net >= 0 else "inverse"
-                st.metric(label="⚖️ Net Growth / Leakage", value=f"{net:,}", delta=f"{net:,}", delta_color=delta_color)
-            # with kpi_4:
-            #     st.metric(label="🚨 Most Affected Gov (Highest Leakage)", value=executive_affected_gov)
-            #     #st.metric(label="🚨 Most Affected Gov (Highest Leakage)", value=f"{executive_affected_gov:,}")
-
-
-            with kpi_4:
-                # 🪄 التعديل السحري: فصل اسم المحافظة عن رقم الخسارة عشان يظهر تحتها علطول بالأحمر من غير قص
-                if 'df_only_losers' in locals() and not df_only_losers.empty:
-                    st.metric(
-                        label="🚨 Most Affected Gov (Highest Leakage)", 
-                        value=f"📍 {worst_row['governorate']}", 
-                        delta=f"{worst_row['signed_subs']:,} Subs",
-                        delta_color= "normal"  #"inverse"  # '#c0392b'
-                        
-                    )
-                else:
-                    st.metric(label="🚨 Most Affected Gov (Highest Leakage)", value="No Net Leakage")
- 
-                
-            st.write("---") # Spacer
-            
-            import plotly.express as px
-            import plotly.graph_objects as go
-            
-            if not df_final_chart.empty:
-                
-                # ==================== [رقم 1: الشلال - Waterfall Chart] ====================
-                st.markdown("##### 🌊 Subscriber Net Flow Breakdown (Geographic Waterfall Analysis)")
-                df_zone = df_final_chart.copy()
-                df_zone['subs_signed'] = df_zone.apply(
-                    lambda row: row['unq_subs'] if row['movement_type'] == 'INFLOW' else -row['unq_subs'], axis=1
-                )
-                df_zone_agg = df_zone.groupby('market_zone')['subs_signed'].sum().reset_index()
-                
-                x_data = ["Base (0)"]
-                y_data = [0]
-                measure_data = ["relative"]
-                for idx, row in df_zone_agg.iterrows():
-                    x_data.append(row['market_zone'])
-                    y_data.append(row['subs_signed'])
-                    measure_data.append("relative")
-                
-                x_data.append("📊 Total Net Result")
-                y_data.append(net)
-                measure_data.append("total")
-                
-                fig_waterfall = go.Figure(go.Waterfall(
-                    name="Net Flow", orientation="v", measure=measure_data, x=x_data, textposition="outside",
-                    text=[f"{val:+,}" if m == "relative" and val != 0 else f"{val:,}" for val, m in zip(y_data, measure_data)],
-                    y=y_data,
-                    increasing=dict(marker=dict(color="#2ecc71")),
-                    decreasing=dict(marker=dict(color="#e74c3c")),
-                    totals=dict(marker=dict(color="#3498db")),
-                ))
-                fig_waterfall.update_layout(
-                    waterfallgap=0.3, margin=dict(l=20, r=20, t=20, b=20), height=380,
-                    template='plotly_dark', paper_bgcolor='rgba(0,0,0,0)', plot_bgcolor='rgba(0,0,0,0)',
-                    font=dict(color="white", size=12) # إجبار الخطوط على اللون الأبيض
-                )
-                st.plotly_chart(fig_waterfall, use_container_width=True)
-                
-                st.write("---") # Spacer
-                
-                # ==================== [رقم 2: المحافظات مـرآة - Mirror Top 5 Gainers vs Losers] ====================
-                st.markdown("##### 🎯 Net Flow Focus: Top 5 Gainers vs Top 5 Losers (Governorate Level)")
-                col_net1, col_net2 = st.columns(2)
-                
-                df_gov_net = df_final_chart.copy()
-                df_gov_net['signed_subs'] = df_gov_net.apply(
-                    lambda r: r['unq_subs'] if r['movement_type'] == 'INFLOW' else -r['unq_subs'], axis=1
-                )
-                df_gov_summary = df_gov_net.groupby('governorate')['signed_subs'].sum().reset_index()
-                
-                with col_net1:
-                    st.markdown("<p style='color: #2ecc71; font-weight: bold; font-size:14px;'>📈 Top 5 Net Gainers </p>", unsafe_allow_html=True)
-                    df_gainers = df_gov_summary[df_gov_summary['signed_subs'] > 0].sort_values(by='signed_subs', ascending=True).tail(5)
-                    
-                    if not df_gainers.empty:
-                        fig_gainers = px.bar(
-                            df_gainers, x='signed_subs', y='governorate', orientation='h',
-                            text_auto='+,', template='plotly_dark'
-                        )
-                        fig_gainers.update_traces(marker_color='#2ecc71', textposition='outside', textfont=dict(color="white", size=11))
-                        fig_gainers.update_layout(
-                            margin=dict(l=10, r=10, t=10, b=10), height=250,
-                            xaxis_title="Net Subs Gained", yaxis_title=None,
-                            paper_bgcolor='rgba(0,0,0,0)', plot_bgcolor='rgba(0,0,0,0)',
-                            font=dict(color="white") # تفتيح خطوط أسماء المحافظات والمحاور
-                        )
-                        st.plotly_chart(fig_gainers, use_container_width=True)
-                    else:
-                        st.caption("No positive net gainers for this selection.")
-                        
-                with col_net2:
-                    st.markdown("<p style='color: #e74c3c; font-weight: bold; font-size:14px; text-align: right;'>📉 Top 5 Net Losers </p>", unsafe_allow_html=True)
-                    df_losers = df_gov_summary[df_gov_summary['signed_subs'] < 0].sort_values(by='signed_subs', ascending=False).tail(5)
-                    
-                    if not df_losers.empty:
-                        # تكتيك المراية السحري: نقل الأسماء والمحور لليمين خالص
-                        fig_losers = px.bar(
-                            df_losers, x='signed_subs', y='governorate', orientation='h',
-                            text_auto=',', template='plotly_dark'
-                        )
-                        fig_losers.update_traces(marker_color='#e74c3c', textposition='outside', textfont=dict(color="white", size=11))
-                        fig_losers.update_layout(
-                            margin=dict(l=10, r=10, t=10, b=10), height=250,
-                            xaxis_title="Net Subs Lost", yaxis_title=None,
-                            paper_bgcolor='rgba(0,0,0,0)', plot_bgcolor='rgba(0,0,0,0)',
-                            font=dict(color="white"),
-                            yaxis=dict(side='right') # 🪄 نقل أسماء المحافظات لليمين لعمل تأثير المراية
-                        )
-                        st.plotly_chart(fig_losers, use_container_width=True)
-                    else:
-                        st.caption("No negative net losers for this selection.")
-                        
-                st.write("---") # Spacer
-                
-                # ==================== [رقم 3: الدونات والـ Legend الناصعة - Behavioral Donut Charts] ====================
-                st.markdown("##### 🍰 Behavioral Mix Analysis (Inflow vs Outflow Profiles)")
-                col_pie1, col_pie2 = st.columns(2)
-                
-                behavior_colors = {
-                    'MIX': '#7f8c8d',          # جري (رمادي غامق)
-                    'BC_ONLY': '#f39c12',      # أورنج
-                    'NORMAL_ONLY': '#c0392b',  # أحمر
-                    'SILENT': '#34495e'        # رمادي مائل للأسود
-                }
-                
-                with col_pie1:
-                    st.markdown("<p style='text-align: center; color: #2ecc71; font-weight: bold;'>🟢 INFLOW Profile (What they recharge NOW)</p>", unsafe_allow_html=True)
-                    df_in = df_final_chart[df_final_chart['movement_type'] == 'INFLOW']
-                    
-                    if not df_in.empty:
-                        df_in_pie = df_in.groupby('rch_behaviour_current_period')['unq_subs'].sum().reset_index()
-                        fig_in_pie = px.pie(
-                            df_in_pie, values='unq_subs', names='rch_behaviour_current_period',
-                            hole=0.4, color='rch_behaviour_current_period', color_discrete_map=behavior_colors,
-                            template='plotly_dark'
-                        )
-                        # تفتيح وتكبير خط الـ Legend ليكون ناصع البياض وواضح جداً للمدير
-                        fig_in_pie.update_layout(
-                            margin=dict(l=10, r=10, t=10, b=10), height=250, showlegend=True, 
-                            paper_bgcolor='rgba(0,0,0,0)', plot_bgcolor='rgba(0,0,0,0)',
-                            legend=dict(font=dict(color="white", size=12)), # 💡 تفتيح خط الـ Legend هنا
-                        )
-                        fig_in_pie.update_traces(textposition='inside', textinfo='percent', textfont=dict(color="white", size=12, weight="bold"))
-                        st.plotly_chart(fig_in_pie, use_container_width=True)
-                    else:
-                        st.caption("No Inflow data available.")
-                        
-                with col_pie2:
-                    st.markdown("<p style='text-align: center; color: #e74c3c; font-weight: bold;'>🔴 OUTFLOW Profile (What they used to recharge BEFORE)</p>", unsafe_allow_html=True)
-                    df_out = df_final_chart[df_final_chart['movement_type'] == 'OUTFLOW']
-                    
-                    if not df_out.empty:
-                        df_out_pie = df_out.groupby('rch_behaviour_previous_period')['unq_subs'].sum().reset_index()
-                        fig_out_pie = px.pie(
-                            df_out_pie, values='unq_subs', names='rch_behaviour_previous_period',
-                            hole=0.4, color='rch_behaviour_previous_period', color_discrete_map=behavior_colors,
-                            template='plotly_dark'
-                        )
-                        # تفتيح وتكبير خط الـ Legend ليكون ناصع البياض
-                        fig_out_pie.update_layout(
-                            margin=dict(l=10, r=10, t=10, b=10), height=250, showlegend=True, 
-                            paper_bgcolor='rgba(0,0,0,0)', plot_bgcolor='rgba(0,0,0,0)',
-                            legend=dict(font=dict(color="white", size=12)), # 💡 تفتيح خط الـ Legend هنا
-                        )
-                        fig_out_pie.update_traces(textposition='inside', textinfo='percent', textfont=dict(color="white", size=12, weight="bold"))
-                        st.plotly_chart(fig_out_pie, use_container_width=True)
-                    else:
-                        st.caption("No Outflow data available.")
-            else:
-                st.info("💡 No active data found matching the selected combination of filters.")
-            
-        else:
-            # 8. الحماية الديناميكية لو اليوم المختار بره المدى
-            df_ibro_clean['reported_date_pure'] = pd.to_datetime(df_ibro_clean['reported_date']).dt.date
-            min_available_date = df_ibro_clean['reported_date_pure'].min()
-            max_available_date = df_ibro_clean['reported_date_pure'].max()
-            st.warning(f"⚠️ No behavior data available for the selected date: **{target_date_str}**.")
+    return int(inflow_subs), int(outflow_subs), int(net_change), df_res
 
 
 
@@ -1165,189 +934,1414 @@ def f_tab_ibro():
 
 
 
-def f_tab_network(global_selected_date):
-    st.subheader("📡 Network Sites Performance & Top 10 Analysis")
 
-    # 1. مناداة فانكشن تحميل الداتا اللي برة
-    df_net = load_master_network_data()
 
-    if df_net.empty:
+
+
+
+
+
+
+
+
+
+
+
+
+def f_tab_dynamic_dashboard(
+    tab_title="🚀 Behavioral Data Center",
+    df_source=None,
+    dimensions=None,
+    prefix="ibro",
+    waterfall_dim="market_zone",
+    mirror_dim="governorate",
+    inflow_profile_col="rch_behaviour_current_period",
+    outflow_profile_col="rch_behaviour_previous_period"
+):
+    """
+    دالة الـ UI الموحدة والديناميكية بالكامل:
+    - dimensions: لستة بالعواميد اللي عايزها تظهر كفلاتر (مثلاً: ['mode', 'tariff_sub_category_2'])
+    - prefix: نص مميز لكل تابة لضمان عدم تداخل الـ widgets في Streamlit
+    - waterfall_dim, mirror_dim, inflow_profile_col, outflow_profile_col: 
+      أسامي العواميد للرسومات، لو ممررين قيمتها بـ None التشارْت المقابل بيختفي تماماً.
+    """
+    st.markdown(f'<div class="section-header">{tab_title}</div>', unsafe_allow_html=True)
+    
+    # 1. الحماية والتأكد أن الداتا فريم موجود ومش فاضي
+    if df_source is None or df_source.empty:
+        st.error("❌ Data source is empty or not loaded properly.")
         return
 
-    # 2. تحويل التاريخ الموحد الممرر من برة لـ datetime للحسبات
-    target_day = pd.to_datetime(global_selected_date)
-
-    # 3. الفلاتر المترابطة الشلالية (Cascading Filters) جوه التاب
-    col_f1, col_f2 = st.columns(2)
+    # تنسيق التواريخ لضمان دقة الفلترة
+    df_clean = df_source.copy()
+    df_clean['reported_date_str'] = pd.to_datetime(df_clean['reported_date']).dt.strftime('%Y-%m-%d')
+    target_date_str = pd.to_datetime(selected_day).strftime('%Y-%m-%d')
     
-    with col_f1:
-        zones_options = ["All"] + list(df_net['market_zone'].dropna().unique())
-        selected_zone = st.selectbox("🌐 Select Market Zone:", options=zones_options, key="net_zone_sb")
+    # تصفية البيانات المبدئية لليوم المختار فقط
+    df_day_base = df_clean[df_clean['reported_date_str'] == target_date_str]
+    
+    if df_day_base.empty:
+        st.warning(f"⚠️ No data available for the selected date: **{target_date_str}**.")
+        return
 
-    with col_f2:
-        if selected_zone != "All":
-            available_govs = df_net[df_net['market_zone'] == selected_zone]['governorate'].dropna().unique()
-        else:
-            available_govs = df_net['governorate'].dropna().unique()
-            
-        govs_options = ["All"] + list(available_govs)
-        selected_gov = st.selectbox("📍 Select Governorate:", options=govs_options, key="net_gov_sb")
-
-    # ✨ التعديل الجديد: زرار تحديد الرؤية (موجب أو سالب) في مكان واضح
-    st.markdown("---")
-    analysis_mode = st.radio(
-        "📊 Select Analysis View:",
-        options=["📈 Top 10 Growth (Highest Gain)", "📉 Top 10 Drop (Highest Loss)"],
-        horizontal=True,
-        key="net_analysis_mode"
-    )
-    st.markdown("---")
-
-    # 4. تجهيز تواريخ الأبعاد الثلاثة لورا بناءً على اليوم الموحد
-    daily_past = [target_day - timedelta(days=i) for i in range(1, 7)]
-    weekly_past = [target_day - timedelta(days=7*i) for i in range(1, 5)]
-    monthly_past = [target_day - timedelta(days=30*i) for i in range(1, 5)]
-
-    # 5. مناداة الفانكشن الحسابية اللي برة لتجهيز البيانات للأبعاد الـ 3
-    df_daily_res = get_top_10_analysis(df_net, target_day, daily_past, selected_zone, selected_gov)
-    df_weekly_res = get_top_10_analysis(df_net, target_day, weekly_past, selected_zone, selected_gov)
-    df_monthly_res = get_top_10_analysis(df_net, target_day, monthly_past, selected_zone, selected_gov)
-
-    # 6. تصميم واجهة العرض الأمامية (Sub-tabs) والـ 3 عواميد
-    sub_tab1, sub_tab2, sub_tab3 = st.tabs([
-        "📆 Daily Trend (vs Past 6 Days)", 
-        "🗓️ Weekly Trend (vs Same Day - Past 4 Weeks)", 
-        "🌙 Monthly Trend (vs Same Stage - Past 4 Months)"
-    ])
-
-    #============== ABS RANKING WITH MODE SWITCH & INT FORMAT
-    def render_top_10_columns(df_res):
-        if df_res is None or df_res.empty:
-            st.warning("⚠️ No historical data found in the master file for this specific date range/filter.")
-            return
-
-        col1, col2, col3 = st.columns(3)
+    # 2. بناء الفلاتر التكتيكية ديناميكياً بناءً على الـ Dimensions الممررة
+    if dimensions:
+        st.markdown("#### 🎛️ Dashboard Controls")
+        filters_cols = st.columns(len(dimensions))
+        chosen_filters = {}
         
-        def color_delta(val):
-            color = '#123819' if val >= 0 else '#5c1d1d'
-            return f'background-color: {color}; color: white; font-weight: bold;'
+        for idx, col in enumerate(filters_cols):
+            dim_name = dimensions[idx]
+            if dim_name in df_day_base.columns:
+                with col:
+                    # لو البُعد هو الـ mode مفيش حاجة اسمها الكل "All" لازم يختار ويندوز زمني
+                    if dim_name.lower() == 'mode':
+                        options = sorted(list(df_day_base[dim_name].unique()))
+                        label_name = "🔄 Time Window (Mode):"
+                    else:
+                        options = ["All"] + sorted(list(df_day_base[dim_name].unique()))
+                        label_name = f"👥 Filter by {dim_name.replace('_', ' ').title()}:"
+                    
+                    # الـ Selectbox بـ Key محمي ديناميكياً بالـ prefix والـ column name
+                    chosen_filters[dim_name] = st.selectbox(
+                        label_name, 
+                        options=options, 
+                        index=0, 
+                        key=f"{prefix}_{dim_name}_widget"
+                    )
+        st.write("---")
+    else:
+        chosen_filters = {}
 
-        # تحديد الفانكشن الحسابية للترتيب بناءً على اختيارات الزرار
-        if "Growth" in analysis_mode:
-            # لو نمو نجيب القيم الكبيرة من فوق (الموجب)
-            get_ranked_data = lambda df, col_name: df.nlargest(10, col_name)
-            title_suffix = "Growth"
-        else:
-            # لو هبوط نجيب أصغر القيم من تحت (السالب الكبير)
-            get_ranked_data = lambda df, col_name: df.nsmallest(10, col_name)
-            title_suffix = "Drop"
-
-        with col1:
-            st.markdown(f"<h4 style='text-align: center; color: #4A90E2;'>🔝 Top 10 Unique Subs {title_suffix}</h4>", unsafe_allow_html=True)
-            top_subs = get_ranked_data(df_res, 'Subs Diff')[['site_code', 'Subs Diff', 'Subs Change %']]
-            top_subs.columns = ['Site Code', 'Subs Added' if "Growth" in analysis_mode else 'Subs Lost', 'Growth %']
-            st.dataframe(
-                # 🔥 التعديل السحري: استخدام :+.0f لعمل راوند أوتوماتيكي بصفر وإخفاء الكسور المستفزة
-                top_subs.style.format({'Subs Added': '{:+.0f}', 'Subs Lost': '{:+.0f}', 'Growth %': '{:+.1f}%'}).map(color_delta, subset=['Growth %']),
-                use_container_width=True, hide_index=True
-            )
-
-        with col2:
-            st.markdown(f"<h4 style='text-align: center; color: #4A90E2;'>🔝 Top 10 TRX {title_suffix}</h4>", unsafe_allow_html=True)
-            top_count = get_ranked_data(df_res, 'Count Diff')[['site_code', 'Count Diff', 'Count Change %']]
-            top_count.columns = ['Site Code', 'Trx Added' if "Growth" in analysis_mode else 'Trx Lost', 'Growth %']
-            st.dataframe(
-                top_count.style.format({'Trx Added': '{:+.0f}', 'Trx Lost': '{:+.0f}', 'Growth %': '{:+.1f}%'}).map(color_delta, subset=['Growth %']),
-                use_container_width=True, hide_index=True
-            )
-
-        with col3:
-            st.markdown(f"<h4 style='text-align: center; color: #4A90E2;'>🔝 Top 10 Amount {title_suffix}</h4>", unsafe_allow_html=True)
-            top_amt = get_ranked_data(df_res, 'Amount Diff')[['site_code', 'Amount Diff', 'Amount Change %']]
-            top_amt.columns = ['Site Code', 'Amt Added' if "Growth" in analysis_mode else 'Amt Lost', 'Growth %']
-            st.dataframe(
-                top_amt.style.format({'Amt Added': '{:+.0f}', 'Amt Lost': '{:+.0f}', 'Growth %': '{:+.1f}%'}).map(color_delta, subset=['Growth %']),
-                use_container_width=True, hide_index=True
-            )
-
-    # عرض الجداول جوه التابات الفرعية
-    with sub_tab1:
-        st.caption(f"Showing Top 10 sites with highest change on {target_day.strftime('%Y-%m-%d')} compared to the average of the last 6 days.")
-        render_top_10_columns(df_daily_res)
-
-    with sub_tab2:
-        st.caption(f"Showing Top 10 sites with highest change compared to the average of the same day in the past 4 weeks.")
-        render_top_10_columns(df_weekly_res)
-
-    with sub_tab3:
-        st.caption(f"Showing Top 10 sites with highest change compared to the average of the same stage in the past 4 months.")
-        render_top_10_columns(df_monthly_res)
-
-
-
-
-
-#============== DATA MONITORING
-
-
-
-
-
-
-#============== VOICE MONITORING
-
-
-
-
-
-
-
-
-
-#============== OC MONITORING
-
-
-
-
-
-
-
-
-
-
-
-# =========================================================
-# 2. Password
-# =========================================================
-
-# 🔒 دالة للتحقق من الباسورد
-# def check_password():
-#     """بتفرمل الأبلكيشن وتطلع شاشة تسجيل الدخول لو الباسورد مش مظبوطة"""
-#     if "password_correct" not in st.session_state:
-#         st.session_state.password_correct = False
-
-#     # لو اليوزر كتبها صح قبل كده، عدي علطول
-#     if st.session_state.password_correct:
-#         return True
-
-#     # رسم شاشة الدخول الشيك في نص الصفحة
-#     st.title("🔒 Orange Internal Dashboard")
-#     user_password = st.text_input("Enter Password to Access the Dashboard:", type="password")
+    # 3. استدعاء المحرك الديناميكي للحسابات
+    inflow, outflow, net, df_final_chart = process_behavioral_data_dynamic(df_day_base, chosen_filters)
     
-#     if st.button("Login"):
-#         # بيقارن اللي اليوزر كتبه باللي إنت مخبيه في الـ secrets
-#         if user_password == st.secrets["password"]:
-#             st.session_state.password_correct = True
-#             st.rerun() # يعمل ريفريش عشان يفتح الأبلكيشن
-#         else:
-#             st.error("❌ Incorrect Password. Please try again.")
+    # 4. لوجيك حساب المحافظة الأكثر تأثراً بالنزيف (Worst Gov)
+    if not df_final_chart.empty and 'governorate' in df_final_chart.columns:
+        df_gov_calc = df_final_chart.copy()
+        df_gov_calc['signed_subs'] = df_gov_calc.apply(
+            lambda r: r['unq_subs'] if r['movement_type'] == 'INFLOW' else -r['unq_subs'], axis=1
+        )
+        df_gov_net_sum = df_gov_calc.groupby('governorate')['signed_subs'].sum().reset_index()
+        df_only_losers = df_gov_net_sum[df_gov_net_sum['signed_subs'] < 0]
+        
+        if not df_only_losers.empty:
+            worst_row = df_only_losers.sort_values(by='signed_subs', ascending=True).iloc[0]
+            has_leakage = True
+        else:
+            has_leakage = False
+    else:
+        has_leakage = False
+
+    # 5. عرض كروت الـ KPIs بتصميم ناصع وقوي
+    st.markdown(f"##### 📈 KPIs Overview for **{target_date_str}**")
+    
+    st.markdown("""
+        <style>
+            [data-testid="stMetricLabel"] { font-size: 14px !important; font-weight: bold !important; color: #ffffff !important; }
+            [data-testid="stMetricValue"] { font-size: 24px !important; font-weight: 900 !important; color: #00ffcc !important; }
+            [data-testid="stMetricDelta"] { font-size: 18px !important; font-weight: bold !important; }
+        </style>
+    """, unsafe_allow_html=True)
+    
+    kpi_1, kpi_2, kpi_3, kpi_4 = st.columns(4)
+    with kpi_1:
+        st.metric(label="🟢 Total Inflow Subs", value=f"{inflow:,}")
+    with kpi_2:
+        st.metric(label="🔴 Total Outflow Subs", value=f"{outflow:,}")
+    with kpi_3:
+        delta_color = "normal" if net >= 0 else "inverse"
+        st.metric(label="⚖️ Net Growth / Leakage", value=f"{net:,}", delta=f"{net:,} Subs", delta_color=delta_color)
+    with kpi_4:
+        if has_leakage:
+            st.metric(
+                label="🚨 Most Affected Gov (Highest Leakage)", 
+                value=f"📍 {worst_row['governorate']}", 
+                delta=f"{worst_row['signed_subs']:,} Subs",
+                delta_color="normal"
+            )
+        else:
+            st.metric(label="🚨 Most Affected Gov (Highest Leakage)", value="No Net Leakage")
+
+    st.write("---")
+
+    if df_final_chart.empty:
+        st.info("💡 No active data found matching the selected combination of filters.")
+        return
+
+    # ==================== [الرسمة رقم 1: الشلال - Waterfall Chart] ====================
+    if waterfall_dim and waterfall_dim in df_final_chart.columns:
+        st.markdown(f"##### 🌊 Subscriber Net Flow Breakdown ({waterfall_dim.replace('_', ' ').title()} Waterfall Analysis)")
+        df_wfl = df_final_chart.copy()
+        df_wfl['subs_signed'] = df_wfl.apply(
+            lambda row: row['unq_subs'] if row['movement_type'] == 'INFLOW' else -row['unq_subs'], axis=1
+        )
+        df_wfl_agg = df_wfl.groupby(waterfall_dim)['subs_signed'].sum().reset_index()
+        
+        x_data = ["Base (0)"]
+        y_data = [0]
+        measure_data = ["relative"]
+        for _, row in df_wfl_agg.iterrows():
+            x_data.append(row[waterfall_dim])
+            y_data.append(row['subs_signed'])
+            measure_data.append("relative")
+        
+        x_data.append("📊 Total Net Result")
+        y_data.append(net)
+        measure_data.append("total")
+        
+        fig_waterfall = go.Figure(go.Waterfall(
+            name="Net Flow", orientation="v", measure=measure_data, x=x_data, textposition="outside",
+            text=[f"{val:+,}" if m == "relative" and val != 0 else f"{val:,}" for val, m in zip(y_data, measure_data)],
+            y=y_data,
+            increasing=dict(marker=dict(color="#2ecc71")),
+            decreasing=dict(marker=dict(color="#e74c3c")),
+            totals=dict(marker=dict(color="#3498db")),
+        ))
+        fig_waterfall.update_layout(
+            waterfallgap=0.3, margin=dict(l=20, r=20, t=20, b=20), height=380,
+            template='plotly_dark', paper_bgcolor='rgba(0,0,0,0)', plot_bgcolor='rgba(0,0,0,0)',
+            font=dict(color="white", size=12)
+        )
+        st.plotly_chart(fig_waterfall, use_container_width=True)
+        st.write("---")
+
+    # ==================== [الرسمة رقم 2: المحافظات مـرآة - Mirror Top 5] ====================
+    if mirror_dim and mirror_dim in df_final_chart.columns:
+        st.markdown(f"##### 🎯 Net Flow Focus: Top 5 Gainers vs Top 5 Losers ({mirror_dim.replace('_', ' ').title()} Level)")
+        col_net1, col_net2 = st.columns(2)
+        
+        df_mir = df_final_chart.copy()
+        df_mir['signed_subs'] = df_mir.apply(
+            lambda r: r['unq_subs'] if r['movement_type'] == 'INFLOW' else -r['unq_subs'], axis=1
+        )
+        df_mir_summary = df_mir.groupby(mirror_dim)['signed_subs'].sum().reset_index()
+        
+        with col_net1:
+            st.markdown("<p style='color: #2ecc71; font-weight: bold; font-size:14px;'>📈 Top 5 Net Gainers </p>", unsafe_allow_html=True)
+            df_gainers = df_mir_summary[df_mir_summary['signed_subs'] > 0].sort_values(by='signed_subs', ascending=True).tail(5)
             
-#     return False
+            if not df_gainers.empty:
+                fig_gainers = px.bar(df_gainers, x='signed_subs', y=mirror_dim, orientation='h', text_auto='+,', template='plotly_dark')
+                fig_gainers.update_traces(marker_color='#2ecc71', textposition='outside', textfont=dict(color="white", size=11))
+                fig_gainers.update_layout(
+                    margin=dict(l=10, r=10, t=10, b=10), height=250, xaxis_title="Net Subs Gained", yaxis_title=None,
+                    paper_bgcolor='rgba(0,0,0,0)', plot_bgcolor='rgba(0,0,0,0)', font=dict(color="white")
+                )
+                st.plotly_chart(fig_gainers, use_container_width=True)
+            else:
+                st.caption("No positive net gainers for this selection.")
+                
+        with col_net2:
+            st.markdown("<p style='color: #e74c3c; font-weight: bold; font-size:14px; text-align: right;'>📉 Top 5 Net Losers </p>", unsafe_allow_html=True)
+            df_losers = df_mir_summary[df_mir_summary['signed_subs'] < 0].sort_values(by='signed_subs', ascending=False).tail(5)
+            
+            if not df_losers.empty:
+                fig_losers = px.bar(df_losers, x='signed_subs', y=mirror_dim, orientation='h', text_auto=',', template='plotly_dark')
+                fig_losers.update_traces(marker_color='#e74c3c', textposition='outside', textfont=dict(color="white", size=11))
+                fig_losers.update_layout(
+                    margin=dict(l=10, r=10, t=10, b=10), height=250, xaxis_title="Net Subs Lost", yaxis_title=None,
+                    paper_bgcolor='rgba(0,0,0,0)', plot_bgcolor='rgba(0,0,0,0)', font=dict(color="white"), yaxis=dict(side='right')
+                )
+                st.plotly_chart(fig_losers, use_container_width=True)
+            else:
+                st.caption("No negative net losers for this selection.")
+        st.write("---")
 
-# # 🛑 تشغيل حارس البوابة (لو رجع False الكود اللي تحته مش هيتنفذ والأبلكيشن هيفضل مقفول)
-# if not check_password():
-#     st.stop()
+    # ==================== [الرسمة رقم 3: الدونات - Behavioral Donut Charts] ====================
+    show_in_pie = inflow_profile_col and inflow_profile_col in df_final_chart.columns
+    show_out_pie = outflow_profile_col and outflow_profile_col in df_final_chart.columns
 
+    if show_in_pie or show_out_pie:
+        st.markdown("##### 🍰 Behavioral Mix Analysis (Inflow vs Outflow Profiles)")
+        col_pie1, col_pie2 = st.columns(2)
+        
+        behavior_colors = {'MIX': '#7f8c8d', 'BC_ONLY': '#f39c12', 'NORMAL_ONLY': '#c0392b', 'SILENT': '#34495e'}
+        
+        with col_pie1:
+            if show_in_pie:
+                st.markdown("<p style='text-align: center; color: #2ecc71; font-weight: bold;'>🟢 INFLOW Profile</p>", unsafe_allow_html=True)
+                df_in = df_final_chart[df_final_chart['movement_type'] == 'INFLOW']
+                if not df_in.empty:
+                    df_in_pie = df_in.groupby(inflow_profile_col)['unq_subs'].sum().reset_index()
+                    fig_in_pie = px.pie(df_in_pie, values='unq_subs', names=inflow_profile_col, hole=0.4, color=inflow_profile_col, color_discrete_map=behavior_colors, template='plotly_dark')
+                    fig_in_pie.update_layout(margin=dict(l=10, r=10, t=10, b=10), height=250, showlegend=True, paper_bgcolor='rgba(0,0,0,0)', plot_bgcolor='rgba(0,0,0,0)', legend=dict(font=dict(color="white", size=12)))
+                    fig_in_pie.update_traces(textposition='inside', textinfo='percent', textfont=dict(color="white", size=12, weight="bold"))
+                    st.plotly_chart(fig_in_pie, use_container_width=True)
+                else:
+                    st.caption("No Inflow data available.")
+            else:
+                st.info("ℹ️ Inflow profile chart is disabled for this tab.")
+                
+        with col_pie2:
+            if show_out_pie:
+                st.markdown("<p style='text-align: center; color: #e74c3c; font-weight: bold;'>🔴 OUTFLOW Profile</p>", unsafe_allow_html=True)
+                df_out = df_final_chart[df_final_chart['movement_type'] == 'OUTFLOW']
+                if not df_out.empty:
+                    df_out_pie = df_out.groupby(outflow_profile_col)['unq_subs'].sum().reset_index()
+                    fig_out_pie = px.pie(df_out_pie, values='unq_subs', names=outflow_profile_col, hole=0.4, color=outflow_profile_col, color_discrete_map=behavior_colors, template='plotly_dark')
+                    fig_out_pie.update_layout(margin=dict(l=10, r=10, t=10, b=10), height=250, showlegend=True, paper_bgcolor='rgba(0,0,0,0)', plot_bgcolor='rgba(0,0,0,0)', legend=dict(font=dict(color="white", size=12)))
+                    fig_out_pie.update_traces(textposition='inside', textinfo='percent', textfont=dict(color="white", size=12, weight="bold"))
+                    st.plotly_chart(fig_out_pie, use_container_width=True)
+                else:
+                    st.caption("No Outflow data available.")
+            else:
+                st.info("ℹ️ Outflow profile chart is disabled for this tab.")
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+#==================================
+#Network
+#==================================
+
+#===================   GEMINI
+
+
+
+# def get_dynamic_network_analysis(df, target_day, past_dates, filters_dict, metrics_map):
+#     # تحويل التواريخ لضمان التوافق
+#     df = df.copy()
+#     df['rch_day'] = pd.to_datetime(df['rch_day'])
+#     target_day = pd.to_datetime(target_day)
+#     past_dates = [pd.to_datetime(d) for d in past_dates]
+
+#     # الفلترة الأساسية
+#     df_filtered = df[df['rch_day'].isin([target_day] + past_dates)].copy()
+    
+#     # تطبيق الفلاتر (الديناميكية)
+#     for col, val in filters_dict.items():
+#         if val != "All":
+#             df_filtered = df_filtered[df_filtered[col] == val]
+
+#     if df_filtered.empty: return None
+
+#     df_curr = df_filtered[df_filtered['rch_day'] == target_day]
+#     df_past = df_filtered[df_filtered['rch_day'].isin(past_dates)]
+
+#     if df_curr.empty or df_past.empty: return None
+
+#     # الحسابات
+#     metrics_cols = list(metrics_map.keys())
+#     past_avg = df_past.groupby('site_code')[metrics_cols].mean().reset_index()
+    
+#     merged = pd.merge(df_curr, past_avg, on='site_code', how='inner', suffixes=('', '_past'))
+
+#     for col, name in metrics_map.items():
+#         merged[f'{name} Diff'] = merged[col] - merged[f'{col}_past']
+#         merged[f'{name} Change %'] = (merged[f'{name} Diff'] / merged[f'{col}_past']) * 100
+        
+#     return merged.replace([np.inf, -np.inf], np.nan).fillna(0)
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+# def f_tab_network_dynamic(df_net, dimensions_list, target_day, metrics_map):
+#     st.subheader("📡 Network Sites Performance & Top 10 Analysis")
+
+#     # 1. الفلاتر
+#     filters = {}
+#     temp_df = df_net.copy()
+#     for dim in dimensions_list:
+#         options = ["All"] + list(temp_df[dim].dropna().unique())
+#         filters[dim] = st.selectbox(f"Filter by {dim.replace('_', ' ').title()}:", options, key=f"net_{dim}")
+#         if filters[dim] != "All":
+#             temp_df = temp_df[temp_df[dim] == filters[dim]]
+
+#     # 2. وضع العرض (Growth vs Drop)
+#     analysis_mode = st.radio("📊 View:", ["📈 Growth", "📉 Drop"], horizontal=True, key="net_analysis_mode")
+#     st.markdown("---")
+
+#     # 3. التابات والتواريخ
+#     tabs = st.tabs(["Daily", "Weekly", "Monthly"])
+    
+#     configs = {
+#         "Daily": [target_day - timedelta(days=i) for i in range(1, 7)],
+#         "Weekly": [target_day - timedelta(days=7*i) for i in range(1, 5)],
+#         "Monthly": [target_day - timedelta(days=30*i) for i in range(1, 5)]
+#     }
+
+#     # 4. التنفيذ
+#     for tab, (name, past_dates) in zip(tabs, configs.items()):
+#         with tab:
+#             # الحساب
+#             res = get_dynamic_network_analysis(temp_df, target_day, past_dates, filters, metrics_map)
+            
+#             # العرض (ربطنا الـ render هنا مباشرة)
+#             if res is not None and not res.empty:
+#                 # ملاحظة: تأكد إن فانكشن الـ render بتستقبل (res, analysis_mode)
+#                 render_top_10_columns(res, analysis_mode)
+#             else:
+#                 st.warning("No data found. Try changing the filters or date.")
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+#================ GPT  V1
+
+
+
+
+
+
+# =========================================================
+# NETWORK MODULE CONFIGS
+# =========================================================
+
+
+# 📂 تعريف مسارات الفولدرات في أول السكريبت
+# RECHARGE_DIR = "Data_Drive/recharge_module/"
+# # DATA_DIR     = "Data_Drive/data_module/"
+# # VOICE_DIR    = "Data_Drive/voice_module/"
+# # CASH_DIR     = "Data_Drive/orange_cash_module/"
+
+# # SITES_RCH_PER_DAY_HIST = pd.read_parquet(f"{RECHARGE_DIR}network_master.parquet"
+
+
+
+# NETWORK_MODULES = {
+
+#     "recharge": {
+#         "module_name": "Recharge",
+#         "file_path": f"{RECHARGE_DIR}network_master.parquet",
+
+#         "metrics": {
+#             "Subscribers": "unq_subs",
+#             "Transactions": "total_rch_cnt",
+#             "Amount": "total_rch_amt"
+#         }
+#     },
+
+#     "voice": {
+#         "module_name": "Voice",
+#         "file_path": f"{RECHARGE_DIR}network_master.parquet",
+
+#         "metrics": {
+#             "Subscribers": "unq_subs",
+#             "Minutes": "total_minutes",
+#             "Calls": "total_calls"
+#         }
+#     },
+
+#     "data": {
+#         "module_name": "Data",
+#         "file_path": f"{RECHARGE_DIR}network_master.parquet",
+
+#         "metrics": {
+#             "Subscribers": "unq_subs",
+#             "MB Usage": "total_mb",
+#             "Sessions": "total_sessions"
+#         }
+#     },
+
+#     "oc": {
+#         "module_name": "Orange Cash",
+#         "file_path": f"{RECHARGE_DIR}network_master.parquet",
+
+#         "metrics": {
+#             "Subscribers": "unq_subs",
+#             "Transactions": "total_trx",
+#             "Amount": "total_amt"
+#         }
+#     }
+# }
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+# # =========================================================
+# # LOAD NETWORK MODULE DATA
+# # =========================================================
+
+# #@st.cache_data(ttl=600)
+# def load_network_module_data(module_key):
+
+#     try:
+
+#         config = NETWORK_MODULES[module_key]
+
+#         df = pd.read_parquet(config["file_path"])
+
+#         df['rch_day'] = pd.to_datetime(df['rch_day'])
+
+#         return df
+
+#     except Exception as e:
+
+#         st.error(f"❌ Error loading network module: {e}")
+
+#         return pd.DataFrame()
+    
+
+
+
+
+
+
+
+
+
+
+# # =========================================================
+# # GENERATE COMPARISON DATES
+# # =========================================================
+
+# def generate_comparison_dates(target_day):
+
+#     return {
+
+#         "Daily Trend (vs Past 6 Days)": [
+#             target_day - timedelta(days=i)
+#             for i in range(1, 7)
+#         ],
+
+#         "Weekly Trend (vs Same Day - Past 4 Weeks)": [
+#             target_day - timedelta(days=7*i)
+#             for i in range(1, 5)
+#         ],
+
+#         "Monthly Trend (vs Same Stage - Past 4 Months)": [
+#             target_day - timedelta(days=30*i)
+#             for i in range(1, 5)
+#         ]
+#     }
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+# # =========================================================
+# # MAIN ANALYTICS ENGINE
+# # =========================================================
+
+# def calculate_network_top10(
+#     df_net,
+#     target_day,
+#     past_dates_list,
+#     metrics_config,
+#     selected_zone="All",
+#     selected_gov="All"
+# ):
+
+#     all_needed_dates = [target_day] + list(past_dates_list)
+
+#     df_filtered = df_net[
+#         df_net['rch_day'].isin(all_needed_dates)
+#     ].copy()
+
+#     # =========================
+#     # APPLY FILTERS
+#     # =========================
+
+#     if selected_zone != "All":
+
+#         df_filtered = df_filtered[
+#             df_filtered['market_zone'] == selected_zone
+#         ]
+
+#     if selected_gov != "All":
+
+#         df_filtered = df_filtered[
+#             df_filtered['governorate'] == selected_gov
+#         ]
+
+#     if df_filtered.empty:
+#         return None
+
+#     # =========================
+#     # CURRENT / PAST
+#     # =========================
+
+#     df_curr = df_filtered[
+#         df_filtered['rch_day'] == target_day
+#     ]
+
+#     df_past = df_filtered[
+#         df_filtered['rch_day'].isin(past_dates_list)
+#     ]
+
+#     if df_curr.empty or df_past.empty:
+#         return None
+
+#     # =========================
+#     # BUILD PAST AGG
+#     # =========================
+
+#     metric_cols = list(metrics_config.values())
+
+#     past_avg = (
+#         df_past
+#         .groupby('site_code')[metric_cols]
+#         .mean()
+#         .reset_index()
+#     )
+
+#     rename_map = {}
+
+#     for col in metric_cols:
+
+#         rename_map[col] = f"past_{col}_avg"
+
+#     past_avg = past_avg.rename(columns=rename_map)
+
+#     # =========================
+#     # MERGE
+#     # =========================
+
+#     merged = pd.merge(
+#         df_curr,
+#         past_avg,
+#         on='site_code',
+#         how='inner'
+#     )
+
+#     if merged.empty:
+#         return None
+
+#     # =========================
+#     # DYNAMIC KPI CALCULATIONS
+#     # =========================
+
+#     for metric_name, metric_col in metrics_config.items():
+
+#         merged[f"{metric_name}_Diff"] = (
+#             merged[metric_col]
+#             - merged[f"past_{metric_col}_avg"]
+#         )
+
+#         merged[f"{metric_name}_Pct"] = (
+#             merged[f"{metric_name}_Diff"]
+#             / merged[f"past_{metric_col}_avg"]
+#         ) * 100
+
+#     merged = merged.replace(
+#         [np.inf, -np.inf],
+#         np.nan
+#     ).fillna(0)
+
+#     return merged
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+# # =========================================================
+# # RENDER TABLES
+# # =========================================================
+
+# def render_network_tables(
+#     df_res,
+#     metrics_config,
+#     analysis_mode
+# ):
+
+#     if df_res is None or df_res.empty:
+
+#         st.warning(
+#             "⚠️ No historical data found for this selection."
+#         )
+
+#         return
+
+#     metric_names = list(metrics_config.keys())
+
+#     cols = st.columns(len(metric_names))
+
+#     # =========================
+#     # SORT MODE
+#     # =========================
+
+#     if "Growth" in analysis_mode:
+
+#         get_ranked = lambda df, col: df.nlargest(10, col)
+
+#         title_suffix = "Growth"
+
+#     else:
+
+#         get_ranked = lambda df, col: df.nsmallest(10, col)
+
+#         title_suffix = "Drop"
+
+#     # =========================
+#     # COLORING
+#     # =========================
+
+#     def color_delta(val):
+
+#         color = '#123819' if val >= 0 else '#5c1d1d'
+
+#         return f'''
+#             background-color: {color};
+#             color: white;
+#             font-weight: bold;
+#         '''
+
+#     # =========================
+#     # LOOP METRICS
+#     # =========================
+
+#     for idx, metric_name in enumerate(metric_names):
+
+#         with cols[idx]:
+
+#             diff_col = f"{metric_name}_Diff"
+
+#             pct_col = f"{metric_name}_Pct"
+
+#             st.markdown(
+#                 f"""
+#                 <h4 style='text-align:center; color:#4A90E2;'>
+#                 🔝 Top 10 {metric_name} {title_suffix}
+#                 </h4>
+#                 """,
+#                 unsafe_allow_html=True
+#             )
+
+#             top_df = get_ranked(
+#                 df_res,
+#                 diff_col
+#             )[
+#                 [
+#                     'site_code',
+#                     diff_col,
+#                     pct_col
+#                 ]
+#             ]
+
+#             top_df.columns = [
+#                 'Site Code',
+#                 f'{metric_name} Delta',
+#                 'Growth %'
+#             ]
+
+#             st.dataframe(
+#                 top_df
+#                 .style
+#                 .format({
+#                     f'{metric_name} Delta': '{:+.0f}',
+#                     'Growth %': '{:+.1f}%'
+#                 })
+#                 .map(
+#                     color_delta,
+#                     subset=['Growth %']
+#                 ),
+
+#                 use_container_width=True,
+#                 hide_index=True
+#             )
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+# # =========================================================
+# # FINAL NETWORK TAB ENGINE
+# # =========================================================
+
+# def f_tab_network(
+#     module_key,
+#     global_selected_date
+# ):
+
+#     config = NETWORK_MODULES[module_key]
+
+#     st.subheader(
+#         f"📡 {config['module_name']} Network Performance"
+#     )
+
+#     # =========================
+#     # LOAD DATA
+#     # =========================
+
+#     df_net = load_network_module_data(module_key)
+
+#     if df_net.empty:
+#         return
+
+#     target_day = pd.to_datetime(global_selected_date)
+
+#     # =========================
+#     # FILTERS
+#     # =========================
+
+#     col_f1, col_f2 = st.columns(2)
+
+#     with col_f1:
+
+#         zones_options = ["All"] + list(
+#             df_net['market_zone']
+#             .dropna()
+#             .unique()
+#         )
+
+#         selected_zone = st.selectbox(
+#             "🌐 Select Market Zone:",
+#             options=zones_options,
+#             key=f"{module_key}_zone"
+#         )
+
+#     with col_f2:
+
+#         if selected_zone != "All":
+
+#             available_govs = df_net[
+#                 df_net['market_zone'] == selected_zone
+#             ]['governorate'].dropna().unique()
+
+#         else:
+
+#             available_govs = df_net[
+#                 'governorate'
+#             ].dropna().unique()
+
+#         govs_options = ["All"] + list(available_govs)
+
+#         selected_gov = st.selectbox(
+#             "📍 Select Governorate:",
+#             options=govs_options,
+#             key=f"{module_key}_gov"
+#         )
+
+#     # =========================
+#     # ANALYSIS MODE
+#     # =========================
+
+#     st.markdown("---")
+
+#     analysis_mode = st.radio(
+#         "📊 Select Analysis View:",
+#         options=[
+#             "📈 Top 10 Growth (Highest Gain)",
+#             "📉 Top 10 Drop (Highest Loss)"
+#         ],
+#         horizontal=True,
+#         key=f"{module_key}_analysis_mode"
+#     )
+
+#     st.markdown("---")
+
+#     # =========================
+#     # COMPARISON MODES
+#     # =========================
+
+#     comparison_modes = generate_comparison_dates(
+#         target_day
+#     )
+
+#     sub_tabs = st.tabs(
+#         list(comparison_modes.keys())
+#     )
+
+#     # =========================
+#     # LOOP SUBTABS
+#     # =========================
+
+#     for idx, (
+#         mode_name,
+#         past_dates
+#     ) in enumerate(comparison_modes.items()):
+
+#         with sub_tabs[idx]:
+
+#             df_result = calculate_network_top10(
+#                 df_net=df_net,
+#                 target_day=target_day,
+#                 past_dates_list=past_dates,
+#                 metrics_config=config["metrics"],
+#                 selected_zone=selected_zone,
+#                 selected_gov=selected_gov
+#             )
+
+#             render_network_tables(
+#                 df_result,
+#                 config["metrics"],
+#                 analysis_mode
+#             )
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+#================NETWORK  GPT V2
+
+
+
+
+
+#=========================================================
+#   1. CONFIG LAYER
+#=========================================================
+
+
+
+
+RECHARGE_DIR = "Data_Drive/recharge_module/"
+# DATA_DIR     = "Data_Drive/data_module/"
+# VOICE_DIR    = "Data_Drive/voice_module/"
+# CASH_DIR     = "Data_Drive/orange_cash_module/"
+
+# SITES_RCH_PER_DAY_HIST = pd.read_parquet(f"{RECHARGE_DIR}network_master.parquet"
+
+
+NETWORK_MODULES = {
+
+    "recharge": {
+        "module_name": "Recharge",
+        "file_path": f"{RECHARGE_DIR}network_master.parquet",
+        "date_col": "rch_day",
+        "metrics": {
+            "Subscribers": "unq_subs",
+            "Transactions": "total_rch_cnt",
+            "Amount": "total_rch_amt"
+        }
+    },
+
+    "voice": {
+        "module_name": "Voice",
+        "file_path": f"{RECHARGE_DIR}network_master.parquet",
+        "date_col": "voice_day",
+        "metrics": {
+            "Subscribers": "unq_subs",
+            "Minutes": "total_minutes",
+            "Calls": "total_calls"
+        }
+    },
+
+    "data": {
+        "module_name": "Data",
+        "file_path": f"{RECHARGE_DIR}network_master.parquet",
+        "date_col": "usage_day",
+        "metrics": {
+            "Subscribers": "unq_subs",
+            "MB Usage": "total_mb"
+        }
+    },
+
+    "oc": {
+        "module_name": "Orange Cash",
+        "file_path": f"{RECHARGE_DIR}network_master.parquet",
+        "date_col": "trx_day",
+        "metrics": {
+            "Subscribers": "unq_subs",
+            "Transactions": "total_trx",
+            "Amount": "total_amt"
+        }
+    }
+}
+
+
+
+
+
+
+
+#=========================================================
+#   2.  LOAD DATA
+#=========================================================
+
+
+
+#@st.cache_data(ttl=600)
+def load_network_module_data(module_key):
+
+    config = NETWORK_MODULES[module_key]
+
+    df = pd.read_parquet(config["file_path"])
+    df[config["date_col"]] = pd.to_datetime(df[config["date_col"]])
+
+    return df
+
+
+
+
+
+
+#=========================================================
+#   3. COMPARISON ENGINE (WITH DATES + DESCRIPTION)
+#=========================================================
+
+
+
+def generate_comparison_modes(target_day):
+
+    target_day = pd.to_datetime(target_day)
+
+    return {
+
+        "Daily Trend": {
+            "dates": [target_day - timedelta(days=i) for i in range(1, 7)],
+            "description": "Compared Against Average of Previous 6 Days"
+        },
+
+        "Weekly Trend": {
+            "dates": [target_day - timedelta(days=7*i) for i in range(1, 5)],
+            "description": "Compared Against Same Day Across Previous 4 Weeks"
+        },
+
+        "Monthly Trend": {
+            "dates": [target_day - timedelta(days=30*i) for i in range(1, 5)],
+            "description": "Compared Against Same Stage Across Previous 4 Months"
+        }
+    }
+
+
+
+
+
+
+
+
+
+
+
+#=========================================================
+#  4. ANALYTICS ENGINE
+#=========================================================
+
+
+
+
+def calculate_network_top10(
+    df,
+    date_col,
+    target_day,
+    past_dates,
+    metrics,
+    selected_zone,
+    selected_gov
+):
+
+    all_dates = [target_day] + past_dates
+
+    df = df[df[date_col].isin(all_dates)].copy()
+
+    if selected_zone != "All":
+        df = df[df["market_zone"] == selected_zone]
+
+    if selected_gov != "All":
+        df = df[df["governorate"] == selected_gov]
+
+    if df.empty:
+        return None
+
+    df_curr = df[df[date_col] == target_day]
+    df_past = df[df[date_col].isin(past_dates)]
+
+    metric_cols = list(metrics.values())
+
+    past_avg = (
+        df_past.groupby("site_code")[metric_cols]
+        .mean()
+        .reset_index()
+    )
+
+    rename = {c: f"past_{c}" for c in metric_cols}
+    past_avg = past_avg.rename(columns=rename)
+
+    merged = df_curr.merge(past_avg, on="site_code", how="inner")
+
+    for name, col in metrics.items():
+
+        merged[f"{name}_diff"] = merged[col] - merged[f"past_{col}"]
+        merged[f"{name}_pct"] = (
+            merged[f"{name}_diff"] / merged[f"past_{col}"]
+        ) * 100
+
+    return merged.replace([np.inf, -np.inf], 0).fillna(0)
+
+
+
+
+
+
+
+
+
+
+#=========================================================
+#  5. INSIGHT HEADER (NEW IMPORTANT PART)
+#=========================================================
+
+
+
+def render_context_info(module_name, target_day, mode_desc, dates_list, zone, gov):
+
+    st.info(f"""
+📡 Module: {module_name}
+
+📅 Selected Date: {target_day}
+
+📊 {mode_desc}
+
+🗓 Comparison Dates:
+{', '.join([str(d.date()) for d in dates_list])}
+
+🌐 Zone: {zone}
+📍 Governorate: {gov}
+""")
+
+
+
+
+
+
+
+
+
+#=========================================================
+#  6. RENDER ENGINE
+#=========================================================
+
+
+
+
+# def render_network_tables(df, metrics, analysis_mode):
+
+#     if df is None or df.empty:
+#         st.warning("No data available")
+#         return
+
+#     metric_names = list(metrics.keys())
+
+#     cols = st.columns(len(metric_names))
+
+#     is_growth = "Growth" in analysis_mode
+
+#     for i, metric in enumerate(metric_names):
+
+#         diff = f"{metric}_diff"
+#         pct = f"{metric}_pct"
+
+#         with cols[i]:
+
+#             st.markdown(f"### 🔝 Top 10 {metric}")
+
+#             if is_growth:
+#                 top = df.nlargest(10, diff)
+#             else:
+#                 top = df.nsmallest(10, diff)
+
+#             st.dataframe(
+#                 top[["site_code", diff, pct]],
+#                 use_container_width=True
+#             )
+
+
+
+
+
+# def render_network_tables(df, metrics, analysis_mode):
+#     if df is None or df.empty:
+#         st.warning("No data available")
+#         return
+
+#     # فانكشن الألوان للـ Change %
+#     def color_delta(val):
+#         color = '#123819' if val >= 0 else '#5c1d1d'
+#         return f'background-color: {color}; color: white;'
+
+#     metric_names = list(metrics.keys())
+#     cols = st.columns(len(metric_names))
+#     is_growth = "Growth" in analysis_mode
+
+#     for i, metric in enumerate(metric_names):
+#         diff = f"{metric}_diff"
+#         pct = f"{metric}_pct"
+
+#         with cols[i]:
+#             # العنوان الديناميكي
+#             title_prefix = "Growth in" if is_growth else "Drop in"
+#             st.markdown(f"### 🔝 {title_prefix} {metric}")
+
+#             # الترتيب
+#             top = df.nlargest(10, diff) if is_growth else df.nsmallest(10, diff)
+            
+#             # تجهيز الداتا للعرض
+#             df_display = top[['site_code', diff, pct]].rename(
+#                 columns={'site_code': 'Site', diff: 'Change', pct: 'Change %'}
+#             )
+            
+#             # التنسيق الاحترافي
+#             st.dataframe(
+#                 df_display.style.format({'Change': '{:+.0f}', 'Change %': '{:+.1f}%'})
+#                           .map(color_delta, subset=['Change %']),
+#                 use_container_width=True, 
+#                 hide_index=True
+#             )
+
+
+
+
+
+
+
+# وكمان عشان "render_network_tables" تبقى كاملة بالتعديلات اللي اتفقنا عليها:
+def render_network_tables(df, metrics, analysis_mode):
+    if df is None or df.empty:
+        st.warning("No data available")
+        return
+
+    def color_delta(val):
+        color = '#123819' if val >= 0 else '#5c1d1d'
+        return f'background-color: {color}; color: white;'
+
+    metric_names = list(metrics.keys())
+    cols = st.columns(len(metric_names))
+    is_growth = "Growth" in analysis_mode
+
+    for i, metric in enumerate(metric_names):
+        diff = f"{metric}_diff"
+        pct = f"{metric}_pct"
+
+        with cols[i]:
+            # التعديل هنا: العنوان الديناميكي
+            title_prefix = "Growth in" if is_growth else "Drop in"
+            st.markdown(f"### 🔝 {title_prefix} {metric}")
+
+            top = df.nlargest(10, diff) if is_growth else df.nsmallest(10, diff)
+            
+            df_display = top[['site_code', diff, pct]].rename(
+                columns={'site_code': 'Site', diff: 'Change', pct: 'Change %'}
+            )
+            
+            st.dataframe(
+                df_display.style.format({'Change': '{:+.0f}', 'Change %': '{:+.1f}%'})
+                          .map(color_delta, subset=['Change %']),
+                use_container_width=True, 
+                hide_index=True
+            )
+
+
+
+
+
+
+#=========================================================
+#  7. MAIN TAB FUNCTION
+#=========================================================
+
+
+
+
+
+def f_tab_network(module_key, selected_day):
+    # 1. إجبار ظهور الخط باللون الأبيض لكل الـ Labels والـ Radio Options
+    st.markdown("""
+        <style>
+        /* Labels of inputs */
+        div[data-testid="stWidgetLabel"] p { color: white !important; }
+        /* Radio button options */
+        div[role="radiogroup"] label p { color: white !important; }
+        </style>
+    """, unsafe_allow_html=True)
+
+    config = NETWORK_MODULES[module_key]
+
+    df = load_network_module_data(module_key)
+
+    if df.empty:
+        return
+
+    target_day = pd.to_datetime(selected_day)
+
+    col1, col2 = st.columns(2)
+
+    with col1:
+        zone = st.selectbox("Zone", ["All"] + list(df["market_zone"].unique()))
+
+    with col2:
+        gov = st.selectbox("Gov", ["All"] + list(df["governorate"].unique()))
+
+    analysis_mode = st.radio(
+        "Mode",
+        ["Growth", "Drop"],
+        horizontal=True
+    )
+
+    comparison_modes = generate_comparison_modes(target_day)
+
+    tabs = st.tabs(list(comparison_modes.keys()))
+
+    for i, (mode_name, meta) in enumerate(comparison_modes.items()):
+
+        with tabs[i]:
+
+            df_res = calculate_network_top10(
+                df=df,
+                date_col=config["date_col"],
+                target_day=target_day,
+                past_dates=meta["dates"],
+                metrics=config["metrics"],
+                selected_zone=zone,
+                selected_gov=gov
+            )
+
+            render_context_info(
+                config["module_name"],
+                target_day.date(),
+                meta["description"],
+                meta["dates"],
+                zone,
+                gov
+            )
+
+            render_network_tables(
+                df_res,
+                config["metrics"],
+                analysis_mode
+            )
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+#============PASSWORD
 
 
 
@@ -1392,80 +2386,6 @@ if not check_password():
 
 
 
-    
-
-
-#==============DATA LOADING
-
-
-
-# @st.cache_data(ttl=600)
-# #@st.cache_data(ttl=60)
-# def load_data():
-
-#     scope = [
-#         "https://spreadsheets.google.com/feeds",
-#         "https://www.googleapis.com/auth/drive"
-#     ]
-
-#     # =====================================================
-#     # Read Credentials
-#     # =====================================================
-
-#     # لو ملف JSON موجود
-#     if os.path.exists("credentials.json"):
-
-#         creds = ServiceAccountCredentials.from_json_keyfile_name(
-#             "credentials.json",
-#             scope
-#         )
-
-#     # لو مش موجود يقرأ من Streamlit Secrets
-#     else:
-
-#         creds_text = st.secrets["google_credentials"]
-
-#         creds_info = json.loads(
-#             creds_text,
-#             strict=False
-#         )
-
-#         creds = ServiceAccountCredentials.from_json_keyfile_dict(
-#             creds_info,
-#             scope
-#         )
-
-#     # =====================================================
-#     # Google Sheets Connection
-#     # =====================================================
-
-#     client = gspread.authorize(creds)
-
-#     # 1. سحب بيانات الشيت الأول والأساسي (زي ما هو بالملي)
-#     sheet = client.open("Recharge_Monitoring_Data").sheet1
-#     all_records = sheet.get_all_records()
-#     df_raw = pd.DataFrame(all_records)
-#     df_raw['RCH_DAY'] = pd.to_datetime(df_raw['RCH_DAY'])
-
-#     # 2. سحب بيانات الشيت الجديد (IBRO_RCH_PER_DAY)
-#     # ملاحظة: لو اسم الشيت على جوجل درايف مختلف عن "IBRO_RCH_PER_DAY"، اكتب الاسم الصح بين القوسين
-#     try:
-#         # بيفتح الملف الجديد وبياخد أول تاب فيه (sheet1)
-#         sheet_apro = client.open("IBRO_RCH_PER_DAY").sheet1
-#         records_apro = sheet_apro.get_all_records()
-#         df_ibro = pd.DataFrame(records_apro)
-        
-#         # لو الشيت الجديد جواه عمود تواريخ وعايز تحوله، تقدر تفك الكومنت عن السطر اللي تحت
-#         # df_ibro['RCH_DAY'] = pd.to_datetime(df_ibro['RCH_DAY'])
-        
-#         print("✅ IBRO_RCH_PER_DAY loaded successfully! Shape:", df_ibro.shape)
-#     except Exception as e:
-#         # حماية: لو الشيت الجديد لسه مضافش أو فيه مشكلة في الصلاحيات، الكود مش هيقفل وهيطلع داتا فريم فاضي
-#         print("❌ Error loading IBRO_RCH_PER_DAY sheet:", e)
-#         df_ibro = pd.DataFrame()
-
-#     # الدالة دلوقتي بترجع ملفين داتا فريم مع بعض كـ Tuple
-#     return df_raw, df_ibro
 
 
 
@@ -1500,18 +2420,18 @@ CASH_DIR     = "Data_Drive/orange_cash_module/"
 def load_data():
     try:
         # قراءة ملف الباركيه الماستر الـ 18 ميجا المرفوع في الريبو
-        #df_raw = pd.read_parquet("Recharge_Monitoring_Data_HIST.parquet")
-        df_raw = pd.read_parquet(f"{RECHARGE_DIR}Recharge_Monitoring_Data_HIST.parquet")
-        df_raw['RCH_DAY'] = pd.to_datetime(df_raw['RCH_DAY'])
+        #RCH_PER_DAY_HIST = pd.read_parquet("Recharge_Monitoring_Data_HIST.parquet")
+        RCH_PER_DAY_HIST = pd.read_parquet(f"{RECHARGE_DIR}Recharge_Monitoring_Data_HIST.parquet")
+        RCH_PER_DAY_HIST['RCH_DAY'] = pd.to_datetime(RCH_PER_DAY_HIST['RCH_DAY'])
 
 
-        #df_ibro = pd.read_parquet("IBRO_RCH_PER_DAY_HIST.parquet")
-        df_ibro = pd.read_parquet(f"{RECHARGE_DIR}IBRO_RCH_PER_DAY_HIST.parquet")
-        df_ibro['reported_date'] = pd.to_datetime(df_ibro['reported_date'])
+        #IBRO_RCH_PER_DAY_HIST = pd.read_parquet("IBRO_RCH_PER_DAY_HIST.parquet")
+        IBRO_RCH_PER_DAY_HIST = pd.read_parquet(f"{RECHARGE_DIR}IBRO_RCH_PER_DAY_HIST.parquet")
+        IBRO_RCH_PER_DAY_HIST['reported_date'] = pd.to_datetime(IBRO_RCH_PER_DAY_HIST['reported_date'])
 
 
 
-        return df_raw , df_ibro
+        return RCH_PER_DAY_HIST , IBRO_RCH_PER_DAY_HIST
     
 
     except Exception as e:
@@ -1529,10 +2449,10 @@ def load_data():
 def load_master_network_data():
     try:
         # قراءة ملف الباركيه الماستر الـ 18 ميجا المرفوع في الريبو
-        #df = pd.read_parquet("network_master.parquet")
-        df = pd.read_parquet(f"{RECHARGE_DIR}network_master.parquet")
-        df['rch_day'] = pd.to_datetime(df['rch_day'])
-        return df
+        #SITES_RCH_PER_DAY_HIST = pd.read_parquet("network_master.parquet")
+        SITES_RCH_PER_DAY_HIST = pd.read_parquet(f"{RECHARGE_DIR}network_master.parquet")
+        SITES_RCH_PER_DAY_HIST['rch_day'] = pd.to_datetime(SITES_RCH_PER_DAY_HIST['rch_day'])
+        return SITES_RCH_PER_DAY_HIST
     except Exception as e:
         st.error(f"❌ Error loading 'network_master.parquet': {e}")
         return pd.DataFrame()
@@ -1577,11 +2497,21 @@ def load_master_SUMMARY_data():
 
 
 
+
+
+
+
+
+
+
+
+
+
 # استخدام Spinner يظهر بوضوح أثناء التحميل
 with st.spinner('Fetching Data...'):
     try:
-        #df_raw = load_data()
-        df_raw, df_ibro = load_data()
+        #RCH_PER_DAY_HIST = load_data()
+        RCH_PER_DAY_HIST, IBRO_RCH_PER_DAY_HIST = load_data()
         DATA_PER_DAY_HIST , OUG_VOICE_PER_DAY_HIST , OC_PER_DAY_HIST , OC_SERVICES_PER_DAY_HIST = load_master_SUMMARY_data()
     except Exception as e:
         st.error(f'Error connecting to database: {e}')
@@ -1590,51 +2520,62 @@ with st.spinner('Fetching Data...'):
 
 
 
-df_daily = df_raw.groupby('RCH_DAY').agg({
+
+#===========================
+# daily summary
+#===========================
+
+
+rch_daily_summary = RCH_PER_DAY_HIST.groupby('RCH_DAY').agg({
         'DAILY_UNQ_SUBS': 'max',
         'DAILY_TRX_COUNTS': 'max',
         'DAILY_TRX_AMOUNTS': 'max'
     }).reset_index()
 
-df_daily["avg_recharge"] = df_daily["DAILY_TRX_AMOUNTS"] / df_daily["DAILY_UNQ_SUBS"]
+rch_daily_summary["avg_recharge"] = rch_daily_summary["DAILY_TRX_AMOUNTS"] / rch_daily_summary["DAILY_UNQ_SUBS"]
 
 
-df_daily = df_daily.sort_values('RCH_DAY')
-
-
-
-# #-------DATA
-
-# df_daily_data = DATA_PER_DAY_HIST.groupby('data_usage_day').agg({
-#         'total_unq_subs': 'max'
-#     }).reset_index()
-
-
-# df_daily_data = df_daily_data.sort_values('data_usage_day')
+rch_daily_summary = rch_daily_summary.sort_values('RCH_DAY')
 
 
 
 
 
-# #-------VOICE
-
-# df_daily_voice = OUG_VOICE_PER_DAY_HIST.groupby('voice_usage_day').agg({
-#         'total_unq_subs': 'max'
-#     }).reset_index()
-
-
-# df_daily_voice = df_daily_voice.sort_values('voice_usage_day')
 
 
 
-# #-------OC
 
-# df_daily_cash = OC_PER_DAY_HIST.groupby('oc_usage_day').agg({
-#         'total_unq_subs': 'max'
-#     }).reset_index()
+oc_daily_summary = OC_PER_DAY_HIST.groupby('oc_usage_day').agg({
+        'total_unq_subs': 'max',
+        'total_oc_trx_cnts': 'max',
+        'total_oc_trx_amts': 'max'
+    }).reset_index()
+
+oc_daily_summary["avg_oc_amt"] = oc_daily_summary["total_oc_trx_amts"] / oc_daily_summary["total_unq_subs"]
 
 
-# df_daily_cash = df_daily_cash.sort_values('oc_usage_day')
+oc_daily_summary = oc_daily_summary.sort_values('oc_usage_day')
+
+
+
+
+
+
+
+
+
+
+data_daily_summary = DATA_PER_DAY_HIST.groupby('data_usage_day').agg({
+        'total_unq_subs': 'max',
+        'total_mb': 'max',
+        'total_gb': 'max'
+    }).reset_index()
+
+data_daily_summary["avg_mb"] = data_daily_summary["total_mb"] / data_daily_summary["total_unq_subs"]
+data_daily_summary["avg_gb"] = data_daily_summary["total_gb"] / data_daily_summary["total_unq_subs"]
+
+
+data_daily_summary = data_daily_summary.sort_values('data_usage_day')
 
 
 
@@ -1652,7 +2593,7 @@ df_daily = df_daily.sort_values('RCH_DAY')
 st.markdown('<div class="main-title">📊 All Products Behavior Monitoring</div>', unsafe_allow_html=True)
 
 # 1. تحديد التاريخ من المدخلات وحساب اليوم المختار
-max_date = df_daily['RCH_DAY'].max().date()
+max_date = rch_daily_summary['RCH_DAY'].max().date()
 selected_date_input = st.date_input("Select Monitoring Date", value=max_date)
 selected_day = pd.to_datetime(selected_date_input)
 
@@ -1678,7 +2619,9 @@ current_status = get_price_status_html(selected_day)
 prev_status = get_price_status_html(prev_day)
 
 # 3. عرض الهيدر الرئيسي الأصلي النظيف كما كان تماماً
-st.markdown(f'<div class="header-bar"><div>📅 {selected_day.date()}</div><div>📆 {weekday_name}</div><div>🗓️ {month_phase}</div></div>', unsafe_allow_html=True)
+#st.markdown(f'<div class="header-bar"><div>📅 {selected_day.date()}</div><div>📆 {weekday_name}</div><div>🗓️ {month_phase}</div></div>', unsafe_allow_html=True)
+st.markdown(f'<div class="header-bar"><div>📅 {selected_day.date()}</div><div>📆 <span style="color: #F2CC60;">{weekday_name}</span></div><div>🗓️ <span style="color: #238636;">{month_phase}</span></div></div>', unsafe_allow_html=True)
+
 
 # 4. عرض الهيدر الصغير الجديد المتسنتر للمقارنة بين زون الأسعار لليومين
 st.markdown(f"""
@@ -1686,127 +2629,6 @@ st.markdown(f"""
     Selected Day: {current_status} &nbsp; &nbsp; &nbsp; &nbsp;  | &nbsp; &nbsp; &nbsp; &nbsp; Compared Day (D-1): {prev_status}
 </div>
 """, unsafe_allow_html=True)
-
-
-
-
-
-
-
-# 1. Summary Cards
-# prev_day = selected_day - timedelta(days=1)
-# curr_row = df_daily[df_daily["RCH_DAY"] == selected_day]
-# prev_row = df_daily[df_daily["RCH_DAY"] == prev_day]
-
-
-# # 🛡️ حارس البوابة الذكي (الفرملة المبكرة):
-# if curr_row.empty or prev_row.empty:
-#     # لو أي يوم فيهم فاضي، هيطلع الرسالة ويقفل الأبلكيشن في ثانية
-#     st.warning(f"⚠️ No data available for the selected date: **{selected_day.date()}**. Please check your data source or select another day.")
-#     st.stop() # 🪄 الفرملة السحرية.. الكود اللي تحت مستحيل يشتغل ومستحيل يضرب إيرور!
-
-# kpis_config = [
-#     ("Recharge Users", "DAILY_UNQ_SUBS"),
-#     ("Transactions", "DAILY_TRX_COUNTS"),
-#     ("Recharge Amount", "DAILY_TRX_AMOUNTS"),
-#     ("Avg Recharge", "avg_recharge")
-# ]
-
-# if not curr_row.empty and not prev_row.empty:
-#     cols = st.columns(4)
-#     for i, (name, col_name) in enumerate(kpis_config):
-#         curr_val = curr_row[col_name].values[0]
-#         p_val = prev_row[col_name].values[0]
-#         diff = ((curr_val - p_val) / p_val) * 100
-        
-#         status_label, status_color = get_status_details(diff)
-#         delta_class = "green" if diff >= 0 else "red"
-#         symbol = "+" if diff >= 0 else ""
-        
-#         with cols[i]:
-#             st.markdown(f"""
-#             <div class="summary-card" style="border-left: 6px solid {status_color};">
-#                 <div class="summary-label">{name}</div>
-#                 <div class="summary-value">{round(curr_val, 1):,}</div>
-#                 <div class="summary-delta {delta_class}">{symbol}{round(diff, 1)}% vs D-1</div>
-#                 <div class="status-tag" style="background-color: {status_color};">{status_label}</div>
-#             </div>
-#             """, unsafe_allow_html=True)
-
-# st.write("") 
-
-
-
-
-
-
-
-
-
-# =========================================================
-# 1. Summary Cards (Multi-Source High-Level Dashboard) - Direct Version
-# =========================================================
-# prev_day = selected_day - timedelta(days=1)
-
-# # دالة داخلية ذكية وسريعة بتجيب القيمة دايركت لليوم من غير أي groupby وبأعلى حماية
-# def get_direct_day_value(df_source, target_date, default_col="DAILY_UNQ_SUBS"):
-#     if df_source is not None and not df_source.empty:
-#         # 1. البحث عن عمود التاريخ أوتوماتيك (سواء اسمه RCH_DAY أو أي اسم تاني)
-#         date_col = "RCH_DAY" if "RCH_DAY" in df_source.columns else df_source.columns[0]
-        
-#         # 2. فلترة سطر اليوم المستهدف
-#         df_filtered = df_source[df_source[date_col] == target_date]
-        
-#         if not df_filtered.empty:
-#             # 3. تحديد اسم عمود الـ Unique Subs (لو DAILY_UNQ_SUBS مش موجود هياخد العمود التاني في الملف)
-#             actual_col = default_col if default_col in df_source.columns else df_source.columns[1]
-#             return df_filtered[actual_col].values[0]
-#     return 0
-
-# # سحب القيم دايركت بأمان تام للنهاردة وامبارح
-# val_rch_curr = get_direct_day_value(df_daily, selected_day)
-# val_rch_prev = get_direct_day_value(df_daily, prev_day)
-
-# val_data_curr = get_direct_day_value(df_daily_data, selected_day)
-# val_data_prev = get_direct_day_value(df_daily_data, prev_day)
-
-# val_voice_curr = get_direct_day_value(df_daily_voice, selected_day)
-# val_voice_prev = get_direct_day_value(df_daily_voice, prev_day)
-
-# val_cash_curr = get_direct_day_value(df_daily_cash, selected_day)
-# val_cash_prev = get_direct_day_value(df_daily_cash, prev_day)
-
-# # الـ Configuration المباشر للكروت
-# kpis_multi_config = [
-#     ("Recharge Users", val_rch_curr, val_rch_prev),
-#     ("Data Users", val_data_curr, val_data_prev),     
-#     ("Voice Users", val_voice_curr, val_voice_prev),   
-#     ("Orange Cash Users", val_cash_curr, val_cash_prev) 
-# ]
-
-# cols = st.columns(4)
-# for i, (name, curr_val, p_val) in enumerate(kpis_multi_config):
-#     # حسبة النسبة المئوية للنمو أو الهبوط مقارنة بامبارح
-#     if p_val != 0:
-#         diff = ((curr_val - p_val) / p_val) * 100
-#     else:
-#         diff = 0
-
-#     status_label, status_color = get_status_details(diff)
-#     delta_class = "green" if diff >= 0 else "red"
-#     symbol = "+" if diff >= 0 else ""
-    
-#     with cols[i]:
-#         st.markdown(f"""
-#         <div class="summary-card" style="border-left: 6px solid {status_color};">
-#             <div class="summary-label">{name}</div>
-#             <div class="summary-value">{round(curr_val, 0):,}</div>
-#             <div class="summary-delta {delta_class}">{symbol}{round(diff, 1)}% vs D-1</div>
-#             <div class="status-tag" style="background-color: {status_color};">{status_label}</div>
-#         </div>
-#         """, unsafe_allow_html=True)
-
-# st.write("")
 
 
 
@@ -1824,8 +2646,8 @@ st.markdown(f"""
 prev_day = selected_day - timedelta(days=1)
 
 # فلاتر اليوم الحالي واليوم السابق للأربع خدمات (كل واحدة من الداتا فريم بتاعتها)
-curr_rch = df_daily[df_daily["RCH_DAY"] == selected_day]
-prev_rch = df_daily[df_daily["RCH_DAY"] == prev_day]
+curr_rch = rch_daily_summary[rch_daily_summary["RCH_DAY"] == selected_day]
+prev_rch = rch_daily_summary[rch_daily_summary["RCH_DAY"] == prev_day]
 
 curr_data = DATA_PER_DAY_HIST[DATA_PER_DAY_HIST["data_usage_day"] == selected_day]
 prev_data = DATA_PER_DAY_HIST[DATA_PER_DAY_HIST["data_usage_day"] == prev_day]
@@ -1889,11 +2711,6 @@ st.write("")
 
 
 
-
-
-
-
-
 # بيسيب مسافة سطرين (تقدر تزود أو تقلل)
 st.markdown("<br>", unsafe_allow_html=True)
 
@@ -1901,6 +2718,259 @@ st.markdown("<br>", unsafe_allow_html=True)
 #st.empty()
 
 #st.markdown("---") # بيعمل خط فاصل شيك وبيدي مسافة تلقائية تحت الهيدر
+
+
+
+
+
+
+
+
+
+
+
+
+#========OVERALL TAB 
+
+
+
+
+def RCH_tab_overall():
+    rch_kpis = [
+        ("Recharge Users", "DAILY_UNQ_SUBS"),
+        ("Transactions", "DAILY_TRX_COUNTS"),
+        ("Recharge Amount", "DAILY_TRX_AMOUNTS"),
+        ("Avg Recharge"  , "avg_recharge")
+    ]
+    render_dynamic_detailed_cards(df=rch_daily_summary, date_col="RCH_DAY", kpis_config=rch_kpis)
+
+
+
+def OC_tab_overall():
+    oc_kpis = [
+        ("Wallet Users"       , "total_unq_subs"),
+        ("Transactions"       , "total_oc_trx_cnts"),
+        ("Total Volume (EGP)" , "total_oc_trx_amts"),
+        ("Avg AMT / SUB"      , "avg_oc_amt")
+    ]
+    render_dynamic_detailed_cards(df=oc_daily_summary, date_col="oc_usage_day", kpis_config=oc_kpis)  
+
+
+
+def DATA_tab_overall():
+    data_kpis = [
+        ("DATA Users"    , "total_unq_subs"),
+        ("Total MB"      , "total_mb"),
+        ("Total GB"      , "total_gb"),
+        ("Avg MB / SUB"  , "avg_mb")
+    ]
+    render_dynamic_detailed_cards(df=data_daily_summary, date_col="data_usage_day", kpis_config=data_kpis)    
+
+
+
+
+
+
+
+
+
+
+#============ALERTS TAB
+
+def RCH_tab_alerts():
+
+    df = get_dynamic_alerts(
+        df_raw = RCH_PER_DAY_HIST, 
+        date_col="RCH_DAY", 
+        dimensions=["RCH_TYPE", "recharge_type_description", "RCH_HOUR_TIERS"], 
+        metrics_map={"RCH_AMT": "Amount", "TRX_COUNTS": "Transactions", "UNQ_SUBS": "Subscribers"},
+        thresholds=[3, 5, 10, 20] # سلم الريتشارج المخصص
+    )
+
+    render_alerts_center_ui(df)
+
+
+
+
+def OC_tab_alerts():
+
+    df = get_dynamic_alerts(
+        df_raw=OC_SERVICES_PER_DAY_HIST, 
+        date_col="oc_usage_day", 
+        dimensions=["service_group"],
+        metrics_map={"total_oc_trx_amts": "Volume (EGP)", "total_oc_trx_cnts": "Transactions", "total_unq_subs": "Users"},
+        thresholds=[2, 4, 8, 15] # سلم أورانج كاش مخصص وحساس أكتر
+    )
+
+
+    render_alerts_center_ui(df)
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+#======    ALERTS_contribution
+
+
+def RCH_ALERTS_contribution():
+    
+        
+        # 🧠 هنا بنعرف الخريطة اللي بتربط عواميد الـ Raw بعواميد الـ Global الحقيقية اللي في الصورة
+        recharge_global_mapping = {
+            "UNQ_SUBS": "DAILY_UNQ_SUBS",       # بيربط اليوزرز
+            "TRX_COUNTS": "DAILY_TRX_COUNTS",   # بيربط الترانزاكشنز
+            "RCH_AMT": "DAILY_TRX_AMOUNTS"      # بيربط المبالغ
+        }
+        
+        render_contribution_section(
+            df_raw=RCH_PER_DAY_HIST, 
+            df_global=rch_daily_summary, 
+            date_col="RCH_DAY", 
+            dimensions=["RCH_TYPE", "recharge_type_description", "RCH_HOUR_TIERS"], 
+            metrics_map={"UNQ_SUBS": "Subscribers", "TRX_COUNTS": "Transactions", "RCH_AMT": "Amount"},
+            global_metrics_map=recharge_global_mapping, # البارامتر الذكي الجديد المانع للأخطاء!
+            thresholds=[5, 15, 30],
+            selected_day=selected_day,
+            prefix="RCH"
+        )
+
+
+
+
+
+# def OC_ALERTS_contribution():
+    
+#     # 🕵️‍♂️ اكتب السطرين دول مؤقتاً عشان تقفش أسامي العواميد الحقيقية
+#     st.write("Real Columns in Orange Cash RAW:", list(OC_SERVICES_PER_DAY_HIST.columns))
+#     st.write("Real Columns in Orange Cash GLOBAL:", list(OC_PER_DAY_HIST.columns))
+    
+    
+
+
+
+
+
+
+def OC_ALERTS_contribution():
+    
+    # 🧠 الماب الذكي: بما إن أسامي الـ RAW والـ GLOBAL متطابقة، الـ Key والـ Value هيبقوا زي بعض بالظبط!
+    recharge_global_mapping = {
+        "total_unq_subs": "total_unq_subs",       # بيربط اليوزرز
+        "total_oc_trx_cnts": "total_oc_trx_cnts",   # بيربط الترانزاكشنز
+        "total_oc_trx_amts": "total_oc_trx_amts"    # بيربط المبالغ (استخدمنا total عشان دي الإجمالي)
+    }
+    
+    render_contribution_section(
+        df_raw=OC_SERVICES_PER_DAY_HIST, 
+        df_global=OC_PER_DAY_HIST, 
+        date_col="oc_usage_day", 
+        dimensions=["service_group"], 
+        # 🚨 الـ Keys هنا بقت مطابقة لأعمدة الـ RAW الحقيقية (total_...) عشان الباندا تفرح ومتقفش
+        metrics_map={
+            "total_unq_subs": "Subscribers", 
+            "total_oc_trx_cnts": "Transactions", 
+            "total_oc_trx_amts": "Amount"
+        },
+        global_metrics_map=recharge_global_mapping, 
+        thresholds=[5, 15, 30],
+        selected_day=selected_day,
+        prefix="orange_cash"
+    )
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+#==========================
+# IBRO
+#==========================
+
+
+
+def RCH_IBRO_tab():
+
+    f_tab_dynamic_dashboard(
+        tab_title="🚀 IBRO Behavioral Data Center",
+        df_source = IBRO_RCH_PER_DAY_HIST,
+        dimensions=['mode', 'tariff_sub_category_2', 'no_of_multisim'],
+        prefix="ibro_tab",
+        waterfall_dim="market_zone",
+        mirror_dim="governorate"
+    )
+
+
+
+
+
+
+
+
+
+#=============================
+# Network
+#==============================
+
+
+# هذا الكود يوضع في الـ RCH_SITES_TAB أو المكان المخصص للتاب في تطبيقك
+# def RCH_SITES_TAB(global_selected_date):
+#     df_net = load_master_network_data()
+#     target_day = pd.to_datetime(global_selected_date)
+    
+#     # الإعدادات
+#     dims = ['market_zone', 'governorate']
+#     metrics = {
+#         'unq_subs': 'Subs', 
+#         'total_rch_cnt': 'Trx', 
+#         'total_rch_amt': 'Amt'
+#     }
+    
+#     # الاستدعاء
+#     f_tab_network_dynamic(df_net, dims, target_day, metrics)
+
+
+def RCH_SITES_TAB():
+
+    f_tab_network("recharge", selected_day)
+
+
+
+    
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 # =========================================================
@@ -1918,6 +2988,9 @@ main_tab_welcome ,main_tab_recharge, main_tab_data, main_tab_voice, main_tab_oc 
 
 
 
+
+
+
 # =========================================================
 # 🔋 main_tab_welcome
 # =========================================================
@@ -1930,7 +3003,6 @@ with main_tab_welcome:
     st.info("Welcome to Monitoring Product ")
 
     st.info("Select Any Product To view details ")
-
 
 
 
@@ -1959,8 +3031,8 @@ with main_tab_recharge:
 
     # 1. Summary Cards
     prev_day = selected_day - timedelta(days=1)
-    curr_row = df_daily[df_daily["RCH_DAY"] == selected_day]
-    prev_row = df_daily[df_daily["RCH_DAY"] == prev_day]
+    curr_row = rch_daily_summary[rch_daily_summary["RCH_DAY"] == selected_day]
+    prev_row = rch_daily_summary[rch_daily_summary["RCH_DAY"] == prev_day]
 
 
     # 🛡️ حارس البوابة الذكي (الفرملة المبكرة):
@@ -1969,7 +3041,7 @@ with main_tab_recharge:
         st.warning(f"⚠️ No data available for the selected date: **{selected_day.date()}**. Please check your data source or select another day.")
         st.stop() # 🪄 الفرملة السحرية.. الكود اللي تحت مستحيل يشتغل ومستحيل يضرب إيرور!
 
-    kpis_config = [
+    RCH_kpis_config = [
         ("Recharge Users", "DAILY_UNQ_SUBS"),
         ("Transactions", "DAILY_TRX_COUNTS"),
         ("Recharge Amount", "DAILY_TRX_AMOUNTS"),
@@ -1978,7 +3050,7 @@ with main_tab_recharge:
 
     if not curr_row.empty and not prev_row.empty:
         cols = st.columns(4)
-        for i, (name, col_name) in enumerate(kpis_config):
+        for i, (name, col_name) in enumerate(RCH_kpis_config):
             curr_val = curr_row[col_name].values[0]
             p_val = prev_row[col_name].values[0]
             diff = ((curr_val - p_val) / p_val) * 100
@@ -2001,6 +3073,9 @@ with main_tab_recharge:
 
 
 
+
+
+
     tab_overall, tab_alerts, tab_alerts_v2 , tab_ibro , tab_network = st.tabs(["🌐 Overall View", "🔔 Alerts Center", "🎯 Contribution Alerts (V2)" , "🚀 IBRO" , "📡 Network Performance"])
 
 
@@ -2008,7 +3083,7 @@ with main_tab_recharge:
     with tab_overall:
         # 🔑 لو أدمن.. رن الفانكشن القديمة علطول ومفيش أيرورز هتظهر
         if st.session_state.get("user_role") == "admin":
-            f_tab_overall()
+            RCH_tab_overall()
             
         # 🚫 العكس: لو مش أدمن (نتورك يوزر مثلاً).. اظهر له الأيرور بس والفانكشن مش هترن
         if st.session_state.get("user_role") != "admin":
@@ -2018,7 +3093,10 @@ with main_tab_recharge:
     with tab_alerts:
         # 🔑 لو أدمن.. رن الفانكشن القديمة علطول ومفيش أيرورز هتظهر
         if st.session_state.get("user_role") == "admin":
-            f_tab_alerts()
+            
+           #render_alerts_center_ui(df_rch_alerts)
+           RCH_tab_alerts() 
+
             
         # 🚫 العكس: لو مش أدمن (نتورك يوزر مثلاً).. اظهر له الأيرور بس والفانكشن مش هترن
         if st.session_state.get("user_role") != "admin":
@@ -2029,7 +3107,9 @@ with main_tab_recharge:
     with tab_alerts_v2:
         # 🔑 لو أدمن.. رن الفانكشن القديمة علطول ومفيش أيرورز هتظهر
         if st.session_state.get("user_role") == "admin":
-            f_tab_alerts_v2()
+            
+            RCH_ALERTS_contribution()
+            
             
         # 🚫 العكس: لو مش أدمن (نتورك يوزر مثلاً).. اظهر له الأيرور بس والفانكشن مش هترن
         if st.session_state.get("user_role") != "admin":
@@ -2040,7 +3120,9 @@ with main_tab_recharge:
     with tab_ibro:
         # 🔑 لو أدمن.. رن الفانكشن القديمة علطول ومفيش أيرورز هتظهر
         if st.session_state.get("user_role") == "admin":
-            f_tab_ibro()
+        
+            RCH_IBRO_tab()
+            
             
         # 🚫 العكس: لو مش أدمن (نتورك يوزر مثلاً).. اظهر له الأيرور بس والفانكشن مش هترن
         if st.session_state.get("user_role") != "admin":
@@ -2049,9 +3131,15 @@ with main_tab_recharge:
         
 
     with tab_network:
-        # هنا بتمرر اسم متغير التاريخ الموحد بتاع الأبلكيشن بتاعك بين القوسين
-        # (لو التاريخ عندك متخزن في متغير اسمه selected_date مثلاً، اكتبه مكانه)
-        f_tab_network(selected_day)
+        
+        RCH_SITES_TAB()
+
+
+
+
+
+
+
 
 
 
@@ -2065,15 +3153,181 @@ with main_tab_recharge:
 # 📶 DATA TAB
 # =========================================================
 
+# with main_tab_data:
+#     st.info("📶 Data Monitoring Module - Coming Soon")
+
+
+
+
 with main_tab_data:
-    st.info("📶 Data Monitoring Module - Coming Soon")
+
+    st.markdown("<br>", unsafe_allow_html=True)
+
+
+
+    st.markdown('<div class="main-title">📊 Data Usage Monitoring Dashboard</div>', unsafe_allow_html=True)
+
+    st.markdown("<br>", unsafe_allow_html=True)
+
+ 
+    # 1. Summary Cards
+    prev_day = selected_day - timedelta(days=1)
+    curr_row = data_daily_summary[data_daily_summary["data_usage_day"] == selected_day]
+    prev_row = data_daily_summary[data_daily_summary["data_usage_day"] == prev_day]
+
+
+    # 🛡️ حارس البوابة الذكي (الفرملة المبكرة):
+    if curr_row.empty or prev_row.empty:
+        # لو أي يوم فيهم فاضي، هيطلع الرسالة ويقفل الأبلكيشن في ثانية
+        st.warning(f"⚠️ No data available for the selected date: **{selected_day.date()}**. Please check your data source or select another day.")
+        st.stop() # 🪄 الفرملة السحرية.. الكود اللي تحت مستحيل يشتغل ومستحيل يضرب إيرور!
+
+    DATA_kpis_config = [
+        ("Total Active Subscribers" , "total_unq_subs"),
+        ("Total MB"                 , "total_mb"),
+        ("Total GB"                 , "total_gb"),
+        ("Avg MB / SUB"             , "avg_mb")
+    ]
+
+    if not curr_row.empty and not prev_row.empty:
+        cols = st.columns(4)
+        for i, (name, col_name) in enumerate(DATA_kpis_config):
+            curr_val = curr_row[col_name].values[0]
+            p_val = prev_row[col_name].values[0]
+            diff = ((curr_val - p_val) / p_val) * 100
+            
+            status_label, status_color = get_status_details(diff)
+            delta_class = "green" if diff >= 0 else "red"
+            symbol = "+" if diff >= 0 else ""
+            
+            with cols[i]:
+                st.markdown(f"""
+                <div class="summary-card" style="border-left: 6px solid {status_color};">
+                    <div class="summary-label">{name}</div>
+                    <div class="summary-value">{round(curr_val, 1):,}</div>
+                    <div class="summary-delta {delta_class}">{symbol}{round(diff, 1)}% vs D-1</div>
+                    <div class="status-tag" style="background-color: {status_color};">{status_label}</div>
+                </div>
+                """, unsafe_allow_html=True)
+
+    st.write("") 
+
+
+
+
+
+
+    tab_overall, tab_alerts, tab_alerts_v2 , tab_ibro , tab_network = st.tabs(["🌐 Overall View", "🔔 Alerts Center", "🎯 Contribution Alerts (V2)" , "🚀 IBRO" , "📡 Network Performance"])
+
+
+
+    with tab_overall:
+        # 🔑 لو أدمن.. رن الفانكشن القديمة علطول ومفيش أيرورز هتظهر
+        if st.session_state.get("user_role") == "admin":
+            DATA_tab_overall()
+            
+        # 🚫 العكس: لو مش أدمن (نتورك يوزر مثلاً).. اظهر له الأيرور بس والفانكشن مش هترن
+        if st.session_state.get("user_role") != "admin":
+            st.error("❌ Wrong Password / No Permission to view this tab.")
+
+
+    with tab_alerts:
+        # 🔑 لو أدمن.. رن الفانكشن القديمة علطول ومفيش أيرورز هتظهر
+        if st.session_state.get("user_role") == "admin":
+            
+           #render_alerts_center_ui(df_rch_alerts)
+           #OC_tab_alerts() 
+           st.info("💰 DATA USAGE Monitoring Module - Coming Soon") 
+
+            
+        # 🚫 العكس: لو مش أدمن (نتورك يوزر مثلاً).. اظهر له الأيرور بس والفانكشن مش هترن
+        if st.session_state.get("user_role") != "admin":
+            st.error("❌ Wrong Password / No Permission to view this tab.")
+
+
+
+    with tab_alerts_v2:
+        # 🔑 لو أدمن.. رن الفانكشن القديمة علطول ومفيش أيرورز هتظهر
+        if st.session_state.get("user_role") == "admin":
+            
+            #OC_ALERTS_contribution()
+            st.info("💰 DATA USAGE Monitoring Module - Coming Soon") 
+            
+            
+        # 🚫 العكس: لو مش أدمن (نتورك يوزر مثلاً).. اظهر له الأيرور بس والفانكشن مش هترن
+        if st.session_state.get("user_role") != "admin":
+            st.error("❌ Wrong Password / No Permission to view this tab.")
+
+
+
+    with tab_ibro:
+        # 🔑 لو أدمن.. رن الفانكشن القديمة علطول ومفيش أيرورز هتظهر
+        if st.session_state.get("user_role") == "admin":
+        
+            #OC_IBRO_tab()
+            st.info("💰 DATA USAGE Monitoring Module - Coming Soon") 
+            
+            
+        # 🚫 العكس: لو مش أدمن (نتورك يوزر مثلاً).. اظهر له الأيرور بس والفانكشن مش هترن
+        if st.session_state.get("user_role") != "admin":
+            st.error("❌ Wrong Password / No Permission to view this tab.")
+        
+        
+
+    with tab_network:
+        
+        #OC_SITES_TAB() 
+        st.info("💰 DATA USAGE Monitoring Module - Coming Soon") 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 # =========================================================
 # 📞 VOICE TAB
 # =========================================================
 
 with main_tab_voice:
-    st.info("📞 Voice Monitoring Module - Coming Soon")
+    st.info("📞 Voice Monitoring Module - Coming Soon")    
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
@@ -2097,1205 +3351,121 @@ with main_tab_voice:
 # 💰 ORANGE CASH TAB
 # =========================================================
 
-# with main_tab_oc:
-#     st.info("💰 Orange Cash Monitoring Module - Coming Soon")
-
-
-
-
-
-
-#==========OC ALERTS
-
-
-# =========================================================
-# 3. ALERTS LOGIC FUNCTIONS
-# =========================================================
-
-
-# def OC_get_alerts_logic(OC_SERVICES_PER_DAY_HIST, target_date):
-#     prev_date = target_date - timedelta(days=1)
-#     curr = OC_SERVICES_PER_DAY_HIST[OC_SERVICES_PER_DAY_HIST["oc_usage_day"] == target_date]
-#     prev = OC_SERVICES_PER_DAY_HIST[OC_SERVICES_PER_DAY_HIST["oc_usage_day"] == prev_date]
-    
-#     if curr.empty or prev.empty: return pd.DataFrame()
-
-#     # # تعديل: تعريف كافة الاحتمالات (فردي، ثنائي، ثلاثي)
-#     # combinations = [ 
-#     #     ["RCH_TYPE"], ["recharge_type_description"], ["RCH_HOUR_TIERS"],
-#     #     ["RCH_TYPE", "recharge_type_description"],
-#     #     ["RCH_TYPE", "RCH_HOUR_TIERS"],
-#     #     ["recharge_type_description", "RCH_HOUR_TIERS"],
-#     #     ["RCH_TYPE", "recharge_type_description", "RCH_HOUR_TIERS"]
-#     # ]
-
-
-#     # تعديل: تعريف كافة الاحتمالات (فردي، ثنائي، ثلاثي)
-#     combinations = [  ["service_group"] ]
-        
-    
-#     m_map = {"total_oc_trx_amts": "Amount", "total_oc_trx_cnts": "Transactions", "total_unq_subs": "Subscribers"}
-#     results = []
-
-#     for cols in combinations:
-#         curr_g = curr.groupby(cols)[["total_oc_trx_cnts", "total_oc_trx_amts", "total_unq_subs"]].sum().reset_index()
-#         prev_g = prev.groupby(cols)[["total_oc_trx_cnts", "total_oc_trx_amts", "total_unq_subs"]].sum().reset_index()
-        
-#         merged = curr_g.merge(prev_g, on=cols, suffixes=('_c', '_p'))
-        
-#         for _, row in merged.iterrows():
-#             segment_name = " | ".join([str(row[c]) for c in cols])
-#             for col_key, name in m_map.items():
-#                 p_val = row[f"{col_key}_p"]
-#                 c_val = row[f"{col_key}_c"]
-#                 if p_val > 0:
-#                     growth = ((c_val - p_val) / p_val) * 100
-#                     abs_g = abs(growth)
-                    
-#                     if abs_g >= 3: # الحد الأدنى للظهور
-#                         # تطبيق سلم التنبيهات الجديد الخاص بك
-#                         if abs_g < 5: level = "Normal"
-#                         elif 5 <= abs_g < 10: level = "Watch"
-#                         elif 10 <= abs_g < 20: level = "Warning"
-#                         else: level = "Critical"
-                        
-#                         results.append({
-#                             "segment": segment_name,
-#                             "metric": name, 
-#                             "growth": round(growth, 1),
-#                             "current_val": round(c_val, 1),
-#                             "previous_val": round(p_val, 1),
-#                             "level": level, 
-#                             "direction": "Drop" if growth < 0 else "Up"
-#                         })
-#     return pd.DataFrame(results)
-
-
-
-# # =========================================================
-# # 3. UI RENDERERS ALERTS
-# # =========================================================
-
-# def OC_show_alerts(data, is_drop):
-#     # إضافة Normal للتبويبات حسب السلم الجديد
-#     levels = ["Critical", "Warning", "Watch", "Normal"]
-#     tabs = st.tabs([f"{l} ({len(data[data['level']==l])})" for l in levels])
-    
-#     for i, l in enumerate(levels):
-#         with tabs[i]:
-#             subset = data[data["level"] == l]
-#             if subset.empty: 
-#                 st.info(f"No {l} alerts found.")
-#             else:
-#                 for _, r in subset.iterrows():
-#                     color = "#DA3633" if is_drop else "#238636"
-#                     arrow = "▼" if is_drop else "▲"
-                    
-#                     st.markdown(f"""
-#                     <div class="alert-card {'drop-card' if is_drop else 'up-card'}">
-#                         <span style="float:right; color:{color}; font-weight:800; font-size:18px;">
-#                             {arrow} {abs(r['growth'])}%
-#                         </span>
-#                         <div style="font-weight:700; margin-bottom:5px;">{r['segment']}</div>
-#                         <div style="font-size:13px; color:#8B949E; margin-bottom:8px;">
-#                             Current: <b>{r['current_val']:,}</b> | Previous: <b>{r['previous_val']:,}</b>
-#                         </div>
-#                         <span class="metric-tag">Metric: {r['metric']}</span>
-#                     </div>
-#                     """, unsafe_allow_html=True)
-
-
-
-
-
-# # ----------------- TAB 2: ALERTS -----------------
-
-
-
-# def OC_f_tab_alerts():
-#     alerts_df = OC_get_alerts_logic(OC_SERVICES_PER_DAY_HIST, selected_day)
-    
-#     if alerts_df.empty:
-#         st.success("✅ System is Stable - All metrics within normal range.")
-#     else:
-#         st.warning(f"⚠️ System detected {len(alerts_df)} deviations for the selected date.")
-        
-#         drops = alerts_df[alerts_df["direction"] == "Drop"].sort_values("growth")
-#         ups = alerts_df[alerts_df["direction"] == "Up"].sort_values("growth", ascending=False)
-
-#         st.markdown(f"""
-#         <div class="alert-summary-container">
-#             <div style="text-align:center; flex:1;">
-#                 <span style="font-size:38px; font-weight:800; color:#DA3633;">{len(drops)}</span><br/>
-#                 <small style="color:#8B949E;">DROPS DETECTED</small>
-#             </div>
-#             <div style="text-align:center; flex:1; border-left:1px solid #30363D;">
-#                 <span style="font-size:38px; font-weight:800; color:#238636;">{len(ups)}</span><br/>
-#                 <small style="color:#8B949E;">UPS DETECTED</small>
-#             </div>
-#         </div>
-#         """, unsafe_allow_html=True)
-
-#         t_drops_main, t_ups_main = st.tabs(["📉 DROPS ANALYSIS", "📈 UPS ANALYSIS"])
-        
-#         with t_drops_main:
-#             OC_show_alerts(drops, True)
-#         with t_ups_main:
-#             OC_show_alerts(ups, False) 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-#================ALERTS FN V2
-
-
-
-
-
-# OC_SERVICES_PER_DAY_HIST_ALERT = OC_SERVICES_PER_DAY_HIST.groupby([ "oc_usage_day" , "service_group"])[["total_oc_trx_cnts", "total_oc_trx_amts", "total_unq_subs"]].sum().reset_index()
-
-# # =========================================================
-# # 3. ALERTS LOGIC FUNCTIONS (المطبخ الخلفي مع الـ 3 أبعاد)
-# # =========================================================
-
-# def OC_get_alerts_logic(OC_SERVICES_PER_DAY_HIST_ALERT, target_date, comparison_mode="Yesterday (D-1)"):
-#     # داتا اليوم الحالي
-#     curr = OC_SERVICES_PER_DAY_HIST_ALERT[OC_SERVICES_PER_DAY_HIST_ALERT["oc_usage_day"] == target_date]
-#     if curr.empty: return pd.DataFrame()
-
-#     # 1. المطبخ الخلفي: تحديد جدول الـ Baseline (prev) بناءً على المقارنة المختارة
-#     if comparison_mode == "Yesterday (D-1)":
-#         prev_date = target_date - timedelta(days=1)
-#         prev = OC_SERVICES_PER_DAY_HIST_ALERT[OC_SERVICES_PER_DAY_HIST_ALERT["oc_usage_day"] == prev_date]
-#         if prev.empty: return pd.DataFrame()
-        
-#     elif comparison_mode == "Same Day - Last 4 Weeks Avg":
-#         # حساب تواريخ نفس اليوم في الـ 4 أسابيع الماضية
-#         past_dates = [target_date - timedelta(weeks=i) for i in range(1, 5)]
-#         past_data = OC_SERVICES_PER_DAY_HIST_ALERT[OC_SERVICES_PER_DAY_HIST_ALERT["oc_usage_day"].isin(past_dates)]
-#         if past_data.empty: return pd.DataFrame()
-#         # عمل Groupby وحساب المتوسط (mean) ليكون هو الـ Baseline
-#         prev = past_data.groupby(["service_group"])[["total_oc_trx_cnts", "total_oc_trx_amts", "total_unq_subs"]].mean().reset_index()
-        
-#     elif comparison_mode == "Same Month Phase - Last 4 Months Avg":
-#         # فرضاً إن الدالة دي متوفرة في الكود الماستر عندك وتسمى get_month_phase
-#         try:
-#             curr_phase = get_month_phase(target_date) # دالة مرحلة الشهر اللي عندك فوق
-#             # فلترة جدول الهيستري بالكامل ليأخذ الأيام التي تقع في نفس الـ Phase لآخر 4 شهور
-#             # (الكود بيرجع بالزمن ويسحب داتا الـ Phase المتطابقة)
-#             start_history = target_date - timedelta(days=120)
-#             past_phase_data = OC_SERVICES_PER_DAY_HIST_ALERT[
-#                 (OC_SERVICES_PER_DAY_HIST_ALERT["oc_usage_day"] >= start_history) & 
-#                 (OC_SERVICES_PER_DAY_HIST_ALERT["oc_usage_day"] < target_date)
-#             ].copy()
-            
-#             # فلترة الأيام اللي ليها نفس الـ Phase (ونفس اسم اليوم إذا كنت تفضل ذلك)
-#             past_phase_data["phase"] = past_phase_data["oc_usage_day"].apply(get_month_phase)
-#             past_phase_data["day_name"] = pd.to_datetime(past_phase_data["oc_usage_day"]).dt.day_name()
-#             target_day_name = pd.to_datetime(target_date).dt.day_name()
-            
-#             filtered_history = past_phase_data[
-#                 (past_phase_data["phase"] == curr_phase) & 
-#                 (past_phase_data["day_name"] == target_day_name)
-#             ]
-#             if filtered_history.empty: return pd.DataFrame()
-            
-#             # حساب المتوسط
-#             prev = filtered_history.groupby(["service_group"])[["total_oc_trx_cnts", "total_oc_trx_amts", "total_unq_subs"]].mean().reset_index()
-#         except:
-#             # Fallback في حالة حدوث أي خطأ في ربط دالة الـ Phase يرجع لـ امبارح منعا لضرب الشاشة
-#             prev_date = target_date - timedelta(days=1)
-#             prev = OC_SERVICES_PER_DAY_HIST_ALERT[OC_SERVICES_PER_DAY_HIST_ALERT["oc_usage_day"] == prev_date]
-#             if prev.empty: return pd.DataFrame()
-
-#     # 2. اللوجيك الأصلي بتاعك للف وبناء الـ Metrics (فابريكا بدون تغيير)
-#     combinations = [ ["service_group"] ]
-#     m_map = {"total_oc_trx_amts": "Amount", "total_oc_trx_cnts": "Transactions", "total_unq_subs": "Subscribers"}
-#     results = []
-
-#     for cols in combinations:
-#         # لو كنا شغالين أسبوعي أو شهري فالـ prev معمول لها groupby بالفعل، فنهندل ده بسلاسة
-#         if "oc_usage_day" in prev.columns:
-#             prev_g = prev.groupby(cols)[["total_oc_trx_cnts", "total_oc_trx_amts", "total_unq_subs"]].sum().reset_index()
-#         else:
-#             prev_g = prev[cols + ["total_oc_trx_cnts", "total_oc_trx_amts", "total_unq_subs"]]
-            
-#         curr_g = curr.groupby(cols)[["total_oc_trx_cnts", "total_oc_trx_amts", "total_unq_subs"]].sum().reset_index()
-#         merged = curr_g.merge(prev_g, on=cols, suffixes=('_c', '_p'))
-        
-#         for _, row in merged.iterrows():
-#             segment_name = " | ".join([str(row[c]) for c in cols])
-#             for col_key, name in m_map.items():
-#                 p_val = row[f"{col_key}_p"]
-#                 c_val = row[f"{col_key}_c"]
-#                 if p_val > 0:
-#                     growth = ((c_val - p_val) / p_val) * 100
-#                     abs_g = abs(growth)
-                    
-#                     if abs_g >= 3: # الحد الأدنى الأصلي بتاعك للظهور
-#                         if abs_g < 5: level = "Normal"
-#                         elif 5 <= abs_g < 10: level = "Watch"
-#                         elif 10 <= abs_g < 20: level = "Warning"
-#                         else: level = "Critical"
-                        
-#                         results.append({
-#                             "segment": segment_name,
-#                             "metric": name, 
-#                             "growth": round(growth, 1),
-#                             "current_val": round(c_val, 1),
-#                             "previous_val": round(p_val, 1),
-#                             "level": level, 
-#                             "direction": "Drop" if growth < 0 else "Up"
-#                         })
-#     return pd.DataFrame(results)
-
-
-# # =========================================================
-# # 3. UI RENDERERS ALERTS (تظل مستقرة كما هي تماماً)
-# # =========================================================
-
-# def OC_show_alerts(data, is_drop):
-#     levels = ["Critical", "Warning", "Watch", "Normal"]
-#     tabs = st.tabs([f"{l} ({len(data[data['level']==l])})" for l in levels])
-    
-#     for i, l in enumerate(levels):
-#         with tabs[i]:
-#             subset = data[data["level"] == l]
-#             if subset.empty: 
-#                 st.info(f"No {l} alerts found.")
-#             else:
-#                 for _, r in subset.iterrows():
-#                     color = "#DA3633" if is_drop else "#238636"
-#                     arrow = "▼" if is_drop else "▲"
-                    
-#                     st.markdown(f"""
-#                     <div class="alert-card {'drop-card' if is_drop else 'up-card'}">
-#                         <span style="float:right; color:{color}; font-weight:800; font-size:18px;">
-#                             {arrow} {abs(r['growth'])}%
-#                         </span>
-#                         <div style="font-weight:700; margin-bottom:5px;">{r['segment']}</div>
-#                         <div style="font-size:13px; color:#8B949E; margin-bottom:8px;">
-#                             Current: <b>{r['current_val']:,}</b> | Previous: <b>{r['previous_val']:,}</b>
-#                         </div>
-#                         <span class="metric-tag">Metric: {r['metric']}</span>
-#                     </div>
-#                     """, unsafe_allow_html=True)
-
-
-# # =========================================================
-# # 3. MASTER ALERTS TAB (الدالة الكبيرة مع الفلاتر والترتيب الحديد)
-# # =========================================================
-
-# def OC_f_tab_alerts():
-#     # 🟢 خطوة 1: رسم فلاتر التحكم شياكة جنب بعض في الأعلى مع الديفولتس
-#     col_f1, col_f2 = st.columns(2)
-    
-#     with col_f1:
-#         selected_comparison = st.selectbox(
-#             "🎯 Select Baseline Comparison:",
-#             options=["Yesterday (D-1)", "Same Day - Last 4 Weeks Avg", "Same Month Phase - Last 4 Months Avg"],
-#             index=0, # الديفولت يفتح على امبارح أوتوماتيك
-#             key="oc_baseline_comparison_filter"
-#         )
-        
-#     with col_f2:
-#         selected_metric = st.selectbox(
-#             "🔍 View Alerts By Metric Type:",
-#             options=["All", "Amount", "Transactions", "Subscribers"],
-#             index=0, # الديفولت يفتح على All للـ 3 مؤشرات معاً
-#             key="oc_metric_type_filter"
-#         )
-        
-#     # نداء دالة اللوجيك مع تمرير البعد المختار ديناميكياً
-#     alerts_df = OC_get_alerts_logic(OC_SERVICES_PER_DAY_HIST_ALERT, selected_day, comparison_mode=selected_comparison)
-    
-#     if alerts_df.empty:
-#         st.success("✅ System is Stable - All metrics within normal range.")
-#     else:
-#         st.warning(f"⚠️ System detected {len(alerts_df)} deviations using [{selected_comparison}].")
-        
-#         # 🟢 خطوة 2: فصل الـ Drops والـ Ups الإجمالية من أجل الـ Counters الثابتة (All)
-#         all_drops = alerts_df[alerts_df["direction"] == "Drop"]
-#         all_ups = alerts_df[alerts_df["direction"] == "Up"]
-
-#         # رسم الـ Summary Container بالعدد الإجمالي الصافي للسيستم
-#         st.markdown(f"""
-#         <div class="alert-summary-container">
-#             <div style="text-align:center; flex:1;">
-#                 <span style="font-size:38px; font-weight:800; color:#DA3633;">{len(all_drops)}</span><br/>
-#                 <small style="color:#8B949E;">TOTAL DROPS</small>
-#             </div>
-#             <div style="text-align:center; flex:1; border-left:1px solid #30363D;">
-#                 <span style="font-size:38px; font-weight:800; color:#238636;">{len(all_ups)}</span><br/>
-#                 <small style="color:#8B949E;">TOTAL UPS</small>
-#             </div>
-#         </div>
-#         """, unsafe_allow_html=True)
-
-#         # 🟢 خطوة 3: تطبيق الفلترة على الكروت بناءً على نوع الـ Metric المختار
-#         if selected_metric != "All":
-#             filtered_drops = all_drops[all_drops["metric"] == selected_metric]
-#             filtered_ups = all_ups[all_ups["metric"] == selected_metric]
-#         else:
-#             filtered_drops = all_drops
-#             filtered_ups = all_ups
-
-#         # 🟢 خطوة 4: الترتيب الحديد (من الكبير للصغير بناءً على حجم الانحراف)
-#         # للـ Drops: بنرتب تصاعدي لأن الأرقام سالبة، فالسالب الكبير جداً (زي -50%) بيطلع فوق الأول كأخطر انحراف
-#         final_drops = filtered_drops.sort_values(by="growth", ascending=True)
-#         # للـ Ups: بنرتب تنازلي لأن الأرقام موجبة، فالرقم الكبير جداً (زي +80%) بيطلع فوق الأول كأعلى قفزة
-#         final_ups = filtered_ups.sort_values(by="growth", ascending=False)
-
-#         # فرز وعرض التابات الكبيرة
-#         t_drops_main, t_ups_main = st.tabs(["📉 DROPS ANALYSIS", "📈 UPS ANALYSIS"])
-        
-#         with t_drops_main:
-#             OC_show_alerts(final_drops, True)
-#         with t_ups_main:
-#             OC_show_alerts(final_ups, False)
-
-
-
-
-
-
-
-
-
-
-
-
-#===============LAST VERSION
-
-
-
-# =========================================================
-# 3. ALERTS LOGIC FUNCTIONS (المطبخ الخلفي المطور)
-# =========================================================
-
-# def OC_get_alerts_logic(OC_SERVICES_PER_DAY_HIST, target_date, comparison_mode="Yesterday (D-1)"):
-#     # 🟢 خطوة 1: التجميع المسبق النظيف (Pre-aggregation) لمنع خفض المتوسطات
-#     # بنجمع الداتا على مستوى اليوم والخدمة أولاً بالـ Sum عشان نفرشها صح
-#     clean_hist = OC_SERVICES_PER_DAY_HIST.groupby(["oc_usage_day", "service_group"])[
-#         ["total_oc_trx_cnts", "total_oc_trx_amts", "total_unq_subs"]
-#     ].sum().reset_index()
-
-#     # داتا اليوم الحالي من الجدول النظيف
-#     curr = clean_hist[clean_hist["oc_usage_day"] == target_date]
-#     if curr.empty: 
-#         return pd.DataFrame(), "No data available for today."
-
-#     compared_dates_str = ""
-
-#     # 🟢 خطوة 2: تحديد الـ Baseline (prev) والتواريخ بناءً على وضع المقارنة
-#     if comparison_mode == "Yesterday (D-1)":
-#         prev_date = target_date - timedelta(days=1)
-#         prev_day_name = pd.to_datetime(prev_date).day_name()
-#         compared_dates_str = f"({prev_day_name}: {prev_date.strftime('%Y-%m-%d')})"
-        
-#         prev = clean_hist[clean_hist["oc_usage_day"] == prev_date]
-#         if prev.empty: return pd.DataFrame(), f"No data found for yesterday {compared_dates_str}"
-        
-#     elif comparison_mode == "Same Day - Last 4 Weeks Avg":
-#         # حساب تواريخ آخر 4 أسابيع لورا بالملي (1, 2, 3, 4)
-#         past_dates = [target_date - timedelta(weeks=i) for i in range(1, 5)]
-#         compared_dates_str = " | ".join([d.strftime('%Y-%m-%d') for d in past_dates])
-#         compared_dates_str = f"({compared_dates_str})"
-        
-#         past_data = clean_hist[clean_hist["oc_usage_day"].isin(past_dates)]
-#         if past_data.empty: return pd.DataFrame(), f"No history found for weeks: {compared_dates_str}"
-        
-#         # بما أن الداتا مفرودة (يوم/خدمة)، الـ mean هنا هيطلع صح 100% ومطابق للمانيوال
-#         prev = past_data.groupby(["service_group"])[["total_oc_trx_cnts", "total_oc_trx_amts", "total_unq_subs"]].mean().reset_index()
-        
-#     elif comparison_mode == "Same Month Phase - Last 4 Months Avg":
-#         try:
-#             curr_phase = get_month_phase(target_date) # دالة الـ Phase اللي عندك فوق
-#             target_day_name = pd.to_datetime(target_date).day_name()
-            
-#             # فتح نافذة زمنية 120 يوم لورا كصنارة تجميع
-#             start_history = target_date - timedelta(days=120)
-#             past_phase_data = clean_hist[
-#                 (clean_hist["oc_usage_day"] >= start_history) & 
-#                 (clean_hist["oc_usage_day"] < target_date)
-#             ].copy()
-            
-#             # تطبيق الفلترة الذكية بناءً على الـ Phase واسم اليوم
-#             past_phase_data["phase"] = past_phase_data["oc_usage_day"].apply(get_month_phase)
-#             past_phase_data["day_name"] = pd.to_datetime(past_phase_data["oc_usage_day"]).day_name()
-            
-#             filtered_history = past_phase_data[
-#                 (past_phase_data["phase"] == curr_phase) & 
-#                 (past_phase_data["day_name"] == target_day_name)
-#             ]
-            
-#             if filtered_history.empty:
-#                 return pd.DataFrame(), f"No matching month phases found in the last 4 months."
-            
-#             # استخراج التواريخ الفريدة اللي دخلت في الحسبة لعرضها للمدير
-#             unique_dates = filtered_history["oc_usage_day"].unique()
-#             compared_dates_str = " | ".join([pd.to_datetime(d).strftime('%Y-%m-%d') for d in unique_dates])
-#             compared_dates_str = f"({compared_dates_str})"
-            
-#             # حساب المتوسط الصافي
-#             prev = filtered_history.groupby(["service_group"])[["total_oc_trx_cnts", "total_oc_trx_amts", "total_unq_subs"]].mean().reset_index()
-            
-#         except:
-#             # Fallback أمان في حالة حدوث أي خطأ في دالة الـ Phase الخارجية
-#             prev_date = target_date - timedelta(days=1)
-#             compared_dates_str = f"({pd.to_datetime(prev_date).strftime('%Y-%m-%d')})"
-#             prev = clean_hist[clean_hist["oc_usage_day"] == prev_date]
-#             if prev.empty: return pd.DataFrame(), "No data available."
-
-#     # 3. اللوجيك الأصلي لبناء الـ Metrics (فابريكا شغال حديد على الداتا النظيفة)
-#     combinations = [ ["service_group"] ]
-#     m_map = {"total_oc_trx_amts": "Amount", "total_oc_trx_cnts": "Transactions", "total_unq_subs": "Subscribers"}
-#     results = []
-
-#     for cols in combinations:
-#         # الداتا أوريدي مفرودة ونظيفة فمش هتضرب من الـ sum ولا الـ groupby هنا
-#         prev_g = prev.groupby(cols)[["total_oc_trx_cnts", "total_oc_trx_amts", "total_unq_subs"]].sum().reset_index()
-#         curr_g = curr.groupby(cols)[["total_oc_trx_cnts", "total_oc_trx_amts", "total_unq_subs"]].sum().reset_index()
-        
-#         merged = curr_g.merge(prev_g, on=cols, suffixes=('_c', '_p'))
-        
-#         for _, row in merged.iterrows():
-#             segment_name = " | ".join([str(row[c]) for c in cols])
-#             for col_key, name in m_map.items():
-#                 p_val = row[f"{col_key}_p"]
-#                 c_val = row[f"{col_key}_c"]
-#                 if p_val > 0:
-#                     growth = ((c_val - p_val) / p_val) * 100
-#                     abs_g = abs(growth)
-                    
-#                     if abs_g >= 3:
-#                         if abs_g < 5: level = "Normal"
-#                         elif 5 <= abs_g < 10: level = "Watch"
-#                         elif 10 <= abs_g < 20: level = "Warning"
-#                         else: level = "Critical"
-                        
-#                         results.append({
-#                             "segment": segment_name,
-#                             "metric": name, 
-#                             "growth": round(growth, 1),
-#                             "current_val": round(c_val, 1),
-#                             "previous_val": round(p_val, 1),
-#                             "level": level, 
-#                             "direction": "Drop" if growth < 0 else "Up"
-#                         })
-                        
-#     return pd.DataFrame(results), compared_dates_str
-
-
-
-
-
-
-def OC_get_alerts_logic(OC_SERVICES_PER_DAY_HIST, target_date, comparison_mode="Yesterday (D-1)"):
-    # 🟢 خطوة 1: التجميع المسبق النظيف (Pre-aggregation) لضمان دقة المتوسطات (الـ 3 هتبقى 280)
-    clean_hist = OC_SERVICES_PER_DAY_HIST.groupby(["oc_usage_day", "service_group"])[
-        ["total_oc_trx_cnts", "total_oc_trx_amts", "total_unq_subs"]
-    ].sum().reset_index()
-
-    # ضمان إن عمود التاريخ في الـ DataFrame نوعه datetime صافي 100%
-    clean_hist["oc_usage_day"] = pd.to_datetime(clean_hist["oc_usage_day"])
-    target_dt = pd.to_datetime(target_date)
-
-    # داتا اليوم الحالي من الجدول النظيف
-    curr = clean_hist[clean_hist["oc_usage_day"] == target_dt]
-    if curr.empty: 
-        return pd.DataFrame(), "No data available for today."
-
-    compared_dates_str = ""
-
-    # 🟢 خطوة 2: تحديد الـ Baseline (prev) والتواريخ بناءً على المقارنة المختارة
-    if comparison_mode == "Yesterday (D-1)":
-        prev_date = target_dt - timedelta(days=1)
-        prev_day_name = prev_date.day_name()
-        compared_dates_str = f"({prev_day_name}: {prev_date.strftime('%Y-%m-%d')})"
-        
-        prev = clean_hist[clean_hist["oc_usage_day"] == prev_date]
-        if prev.empty: return pd.DataFrame(), f"No data found for yesterday {compared_dates_str}"
-        
-    elif comparison_mode == "Same Day - Last 4 Weeks Avg":
-        # حساب تواريخ آخر 4 أسابيع لورا بالملي
-        past_dates = [target_dt - timedelta(weeks=i) for i in range(1, 5)]
-        compared_dates_str = " | ".join([d.strftime('%Y-%m-%d') for d in past_dates])
-        compared_dates_str = f"({compared_dates_str})"
-        
-        past_data = clean_hist[clean_hist["oc_usage_day"].isin(past_dates)]
-        if past_data.empty: return pd.DataFrame(), f"No history found for weeks: {compared_dates_str}"
-        
-        # حساب المتوسط الصافي النظيف
-        prev = past_data.groupby(["service_group"])[["total_oc_trx_cnts", "total_oc_trx_amts", "total_unq_subs"]].mean().reset_index()
-        
-    elif comparison_mode == "Same Month Phase - Last 4 Months Avg":
-        try:
-            # هنا بنباصي لـ دالتك target_dt كـ datetime object صريح عشان يقرأ منه .day بأمان
-            curr_phase = get_month_phase(target_dt) 
-            target_day_name = target_dt.day_name()
-            
-            # فتح نافذة زمنية 130 يوم لورا كصنارة لتغطية الـ 4 شهور
-            start_history = target_dt - timedelta(days=130)
-            past_phase_data = clean_hist[
-                (clean_hist["oc_usage_day"] >= start_history) & 
-                (clean_hist["oc_usage_day"] < target_dt)
-            ].copy()
-            
-            # 🌟 السحر هنا: بنمرر التواريخ لدالتك كـ Datetime Object صريح عشان الـ .day تشتغل فابريكا
-            past_phase_data["phase"] = past_phase_data["oc_usage_day"].apply(get_month_phase)
-            past_phase_data["day_name"] = past_phase_data["oc_usage_day"].dt.day_name()
-            
-            # الفلترة الذكية: نفس الـ Phase ونفس اسم اليوم (مثلاً: الأحد أول الشهر)
-            filtered_history = past_phase_data[
-                (past_phase_data["phase"] == curr_phase) & 
-                (past_phase_data["day_name"] == target_day_name)
-            ]
-            
-            if filtered_history.empty:
-                # خط دفاع أول (Fallback أمان لو ملقاش داتا يرجع لآخر 4 أسابيع بدل ما يعطل)
-                past_dates = [target_dt - timedelta(weeks=i) for i in range(1, 5)]
-                compared_dates_str = " | ".join([d.strftime('%Y-%m-%d') for d in past_dates])
-                fallback_data = clean_hist[clean_hist["oc_usage_day"].isin(past_dates)]
-                return fallback_data.groupby(["service_group"])[["total_oc_trx_cnts", "total_oc_trx_amts", "total_unq_subs"]].mean().reset_index(), f"Fallback to Last 4 Weeks: ({compared_dates_str})"
-            
-            # استخراج التواريخ الفريدة المفرودة وعرضها للمدير في السطر الأزرق
-            unique_dates = sorted(filtered_history["oc_usage_day"].unique())
-            compared_dates_str = " | ".join([pd.to_datetime(d).strftime('%Y-%m-%d') for d in unique_dates])
-            compared_dates_str = f"({compared_dates_str})"
-            
-            # حساب المتوسط الصافي الحقيقي لآخر 4 شهور متطابقة
-            prev = filtered_history.groupby(["service_group"])[["total_oc_trx_cnts", "total_oc_trx_amts", "total_unq_subs"]].mean().reset_index()
-            
-        except Exception as e:
-            # لو حصل أي خطأ، بنطبع تفاصيله في السطر الأزرق عشان نلمحه علطول
-            prev_date = target_dt - timedelta(days=1)
-            compared_dates_str = f"(Error Fallback D-1: {prev_date.strftime('%Y-%m-%d')} | Details: {str(e)[:40]})"
-            prev = clean_hist[clean_hist["oc_usage_day"] == prev_date]
-
-    # 3. اللوجيك الأصلي لبناء الـ Metrics وحساب الـ Growth (فابريكا زي ما هو)
-    combinations = [ ["service_group"] ]
-    m_map = {"total_oc_trx_amts": "Amount", "total_oc_trx_cnts": "Transactions", "total_unq_subs": "Subscribers"}
-    results = []
-
-    for cols in combinations:
-        prev_g = prev.groupby(cols)[["total_oc_trx_cnts", "total_oc_trx_amts", "total_unq_subs"]].sum().reset_index()
-        curr_g = curr.groupby(cols)[["total_oc_trx_cnts", "total_oc_trx_amts", "total_unq_subs"]].sum().reset_index()
-        
-        merged = curr_g.merge(prev_g, on=cols, suffixes=('_c', '_p'))
-        
-        for _, row in merged.iterrows():
-            segment_name = " | ".join([str(row[c]) for c in cols])
-            for col_key, name in m_map.items():
-                p_val = row[f"{col_key}_p"]
-                c_val = row[f"{col_key}_c"]
-                if p_val > 0:
-                    growth = ((c_val - p_val) / p_val) * 100
-                    abs_g = abs(growth)
-                    
-                    if abs_g >= 3:
-                        if abs_g < 5: level = "Normal"
-                        elif 5 <= abs_g < 10: level = "Watch"
-                        elif 10 <= abs_g < 20: level = "Warning"
-                        else: level = "Critical"
-                        
-                        results.append({
-                            "segment": segment_name,
-                            "metric": name, 
-                            "growth": round(growth, 1),
-                            "current_val": round(c_val, 1),
-                            "previous_val": round(p_val, 1),
-                            "level": level, 
-                            "direction": "Drop" if growth < 0 else "Up"
-                        })
-                        
-    return pd.DataFrame(results), compared_dates_str
-
-
-
-
-
-# =========================================================
-# 3. UI RENDERERS ALERTS (مستقرة وفابريكا بدون تعديل)
-# =========================================================
-
-def OC_show_alerts(data, is_drop):
-    levels = ["Critical", "Warning", "Watch", "Normal"]
-    tabs = st.tabs([f"{l} ({len(data[data['level']==l])})" for l in levels])
-    
-    for i, l in enumerate(levels):
-        with tabs[i]:
-            subset = data[data["level"] == l]
-            if subset.empty: 
-                st.info(f"No {l} alerts found.")
-            else:
-                for _, r in subset.iterrows():
-                    color = "#DA3633" if is_drop else "#238636"
-                    arrow = "▼" if is_drop else "▲"
-                    
-                    st.markdown(f"""
-                    <div class="alert-card {'drop-card' if is_drop else 'up-card'}">
-                        <span style="float:right; color:{color}; font-weight:800; font-size:18px;">
-                            {arrow} {abs(r['growth'])}%
-                        </span>
-                        <div style="font-weight:700; margin-bottom:5px;">{r['segment']}</div>
-                        <div style="font-size:13px; color:#8B949E; margin-bottom:8px;">
-                            Current: <b>{r['current_val']:,}</b> | Previous: <b>{r['previous_val']:,}</b>
-                        </div>
-                        <span class="metric-tag">Metric: {r['metric']}</span>
-                    </div>
-                    """, unsafe_allow_html=True)
-
-
-
-
-
-# =========================================================
-# 3. MASTER ALERTS TAB (لوحة التحكم مع الشفافية الكاملة والترتيب)
-# =========================================================
-
-def OC_f_tab_alerts():
-    # 🟢 خطوة 1: رسم قائمة التحكم العلوية شياكة مع وضع الديفولتس الحديد
-    col_f1, col_f2 = st.columns(2)
-    
-    with col_f1:
-        selected_comparison = st.selectbox(
-            "🎯 Select Baseline Comparison:",
-            options=["Yesterday (D-1)", "Same Day - Last 4 Weeks Avg", "Same Month Phase - Last 4 Months Avg"],
-            index=0, # الديفولت يفتح على امبارح
-            key="oc_baseline_comparison_filter"
-        )
-        
-    with col_f2:
-        selected_metric = st.selectbox(
-            "🔍 View Alerts By Metric Type:",
-            options=["All", "Amount", "Transactions", "Subscribers"],
-            index=0, # الديفولت يفتح على All لروية الصورة كاملة
-            key="oc_metric_type_filter"
-        )
-        
-    # استدعاء دالة اللوجيك واستقبال الجدول الصافي + نص التواريخ التوضيحي
-    alerts_df, date_context = OC_get_alerts_logic(OC_SERVICES_PER_DAY_HIST, selected_day, comparison_mode=selected_comparison)
-    
-    # 🟢 خطوة 2: طباعة الجملة التوضيحية الذكية (Contextual Subtitle) بالتواريخ والمؤشرات الصريحة
-    metric_display = "All metrics (Amount, Transactions, Subscribers)" if selected_metric == "All" else f"'{selected_metric}' metric only"
-    st.markdown(f"""
-    <p style="color: #8B949E; font-size: 14px; margin-top: -10px; margin-bottom: 20px; font-style: italic;">
-        📊 <b>Current View:</b> Reviewing {metric_display} compared by <b>{selected_comparison}</b> <span style="color: #58A6FF;">{date_context}</span>
-    </p>
-    """, unsafe_allow_html=True)
-
-    if alerts_df.empty:
-        st.success("✅ System is Stable - All metrics within normal range.")
-    else:
-        # فصل البيانات من أجل العدادات الإجمالية (تظل ثابتة كاشفة للسيستم بالكامل)
-        all_drops = alerts_df[alerts_df["direction"] == "Drop"]
-        all_ups = alerts_df[alerts_df["direction"] == "Up"]
-
-        # رسم شريط العدادات الإجمالية الكبير فوق
-        st.markdown(f"""
-        <div class="alert-summary-container">
-            <div style="text-align:center; flex:1;">
-                <span style="font-size:38px; font-weight:800; color:#DA3633;">{len(all_drops)}</span><br/>
-                <small style="color:#8B949E;">TOTAL DROPS</small>
-            </div>
-            <div style="text-align:center; flex:1; border-left:1px solid #30363D;">
-                <span style="font-size:38px; font-weight:800; color:#238636;">{len(all_ups)}</span><br/>
-                <small style="color:#8B949E;">TOTAL UPS</small>
-            </div>
-        </div>
-        """, unsafe_allow_html=True)
-
-        # 🟢 خطوة 3: تطبيق فلترة المؤشر على الكروت السفلية فقط
-        if selected_metric != "All":
-            filtered_drops = all_drops[all_drops["metric"] == selected_metric]
-            filtered_ups = all_ups[all_ups["metric"] == selected_metric]
-        else:
-            filtered_drops = all_drops
-            filtered_ups = all_ups
-
-        # 🟢 خطوة 4: الترتيب الحديد (من الانحراف الأكبر للأصغر) لتبكير المشاكل لعين المدير
-        final_drops = filtered_drops.sort_values(by="growth", ascending=True)  # الهبوط الأقوى (مثل -40%) فوق أولاً
-        final_ups = filtered_ups.sort_values(by="growth", ascending=False)     # القفزة الأعلى (مثل +70%) فوق أولاً
-
-        # فرز التابات الكبيرة وتحميل الكروت المرتستفة
-        t_drops_main, t_ups_main = st.tabs(["📉 DROPS ANALYSIS", "📈 UPS ANALYSIS"])
-        
-        with t_drops_main:
-            OC_show_alerts(final_drops, True)
-        with t_ups_main:
-            OC_show_alerts(final_ups, False)
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 
 with main_tab_oc:
-    st.markdown('<div class="section-header">🍊 Orange Cash Monitoring Dashboard</div>', unsafe_allow_html=True)
-    
-    # 📂 1. قراءة الداتا (المسار المنظم الجديد بتاعك)
-    # حماية الكود من الأخطاء في حالة عدم وجود الملف
-    # try:
-    #     # استبدل الاسم بملف الباركيه الحقيقي بتاعك جوه الفولدر
-    #     OC_SERVICES_PER_DAY_HIST = pd.read_csv("OC_SERVICES_PER_DAY_sample.csv") 
-    #     OC_SERVICES_PER_DAY_HIST['oc_usage_day'] = pd.to_datetime(OC_SERVICES_PER_DAY_HIST['oc_usage_day']).dt.date
-    # except Exception as e:
-    #     st.error(f"❌ Error loading Orange Cash Data: {e}")
-    #     OC_SERVICES_PER_DAY_HIST = pd.DataFrame()
 
-    if not OC_SERVICES_PER_DAY_HIST.empty:
-        # تحديد التواريخ (اليوم الحالي وامبارح) بناءً على الكالندر الرئيسي للأبلكيشن
-        oc_prev_day = selected_day - timedelta(days=1)
-        
-        # تجميع الداتا الكلية على مستوى اليوم (الشركة كلها)
-        # df_oc_daily = OC_SERVICES_PER_DAY_HIST.groupby('oc_usage_day').agg({
-        #     'total_oc_trx_amts': 'sum',
-        #     'total_oc_trx_cnts': 'sum',
-        #     'total_unq_subs': 'sum'
-        # }).reset_index()
+    st.markdown("<br>", unsafe_allow_html=True)
 
 
-        df_oc_daily = OC_PER_DAY_HIST[['oc_usage_day' , 'total_unq_subs' , 'total_oc_trx_cnts' , 'total_oc_trx_amts']]
 
-        # جلب قيم اليوم الحالي وامبارح للـ KPI Cards الكبار
-        curr_oc = df_oc_daily[df_oc_daily['oc_usage_day'] == selected_day]
-        prev_oc = df_oc_daily[df_oc_daily['oc_usage_day'] == oc_prev_day]
+    st.markdown('<div class="main-title">📊🍊 Orange Cash Monitoring Dashboard</div>', unsafe_allow_html=True)
 
-        # قيم افتراضية في حالة عدم وجود داتا لليوم
-        val_amt_curr, val_amt_prev = (curr_oc['total_oc_trx_amts'].values[0], prev_oc['total_oc_trx_amts'].values[0]) if not curr_oc.empty and not prev_oc.empty else (0, 0)
-        val_cnt_curr, val_cnt_prev = (curr_oc['total_oc_trx_cnts'].values[0], prev_oc['total_oc_trx_cnts'].values[0]) if not curr_oc.empty and not prev_oc.empty else (0, 0)
-        val_sub_curr, val_sub_prev = (curr_oc['total_unq_subs'].values[0], prev_oc['total_unq_subs'].values[0]) if not curr_oc.empty and not prev_oc.empty else (0, 0)
+    st.markdown("<br>", unsafe_allow_html=True)
 
-        # ---------------------------------------------------------
-        # 💳 الجزء الأول: كروت الأداء العام للأورنج كاش (Top KPI Cards)
-        # ---------------------------------------------------------
-        oc_kpis = [
-            ("Total Transaction Volume (EGP)", val_amt_curr, val_amt_prev),
-            ("Total Transactions Count", val_cnt_curr, val_cnt_prev),
-            ("Total Active Subscribers", val_sub_curr, val_sub_prev)
-        ]
+ 
+    # 1. Summary Cards
+    prev_day = selected_day - timedelta(days=1)
+    curr_row = oc_daily_summary[oc_daily_summary["oc_usage_day"] == selected_day]
+    prev_row = oc_daily_summary[oc_daily_summary["oc_usage_day"] == prev_day]
 
-        oc_cols = st.columns(3)
-        for i, (name, c_val, p_val) in enumerate(oc_kpis):
-            diff = ((c_val - p_val) / p_val * 100) if p_val != 0 else 0
+
+    # 🛡️ حارس البوابة الذكي (الفرملة المبكرة):
+    if curr_row.empty or prev_row.empty:
+        # لو أي يوم فيهم فاضي، هيطلع الرسالة ويقفل الأبلكيشن في ثانية
+        st.warning(f"⚠️ No data available for the selected date: **{selected_day.date()}**. Please check your data source or select another day.")
+        st.stop() # 🪄 الفرملة السحرية.. الكود اللي تحت مستحيل يشتغل ومستحيل يضرب إيرور!
+
+    OC_kpis_config = [
+        ("Total Active Subscribers"      , "total_unq_subs"),
+        ("Total Transactions Count"      , "total_oc_trx_cnts"),
+        ("Total Transaction Volume (EGP)", "total_oc_trx_amts"),
+        ("Avg Transaction Volume (EGP)"  , "avg_oc_amt")
+    ]
+
+    if not curr_row.empty and not prev_row.empty:
+        cols = st.columns(4)
+        for i, (name, col_name) in enumerate(OC_kpis_config):
+            curr_val = curr_row[col_name].values[0]
+            p_val = prev_row[col_name].values[0]
+            diff = ((curr_val - p_val) / p_val) * 100
+            
             status_label, status_color = get_status_details(diff)
             delta_class = "green" if diff >= 0 else "red"
             symbol = "+" if diff >= 0 else ""
             
-            with oc_cols[i]:
+            with cols[i]:
                 st.markdown(f"""
-                <div class="summary-card" style="border-left: 6px solid {status_color}; margin-bottom:20px;">
+                <div class="summary-card" style="border-left: 6px solid {status_color};">
                     <div class="summary-label">{name}</div>
-                    <div class="summary-value">{round(c_val, 0):,}</div>
+                    <div class="summary-value">{round(curr_val, 1):,}</div>
                     <div class="summary-delta {delta_class}">{symbol}{round(diff, 1)}% vs D-1</div>
                     <div class="status-tag" style="background-color: {status_color};">{status_label}</div>
                 </div>
                 """, unsafe_allow_html=True)
 
-        # ---------------------------------------------------------
-        # 📑 الجزء الثاني: التابات الفرعية للـ Orange Cash (Sub-Tabs)
-        # ---------------------------------------------------------
-        sub_tab_performance, sub_tab_breakdown, sub_tab_alerts ,sub_tab_alerts_V2,sub_tab_alerts_V3,sub_tab_alerts_V4 = st.tabs([
-            "📊 OVERALL PERFORMANCE", 
-            "💼 SERVICES BREAKDOWN", 
-            "⚠️ SERVICES ALERTS",
-            "⚠️ SERVICES ALERTS V2",
-            "⚠️ SERVICES ALERTS V3",
-            "⚠️ SERVICES ALERTS V4"
-        ])
+    st.write("") 
 
-        # --- 1️⃣ TAB: OVERALL PERFORMANCE ---
-        with sub_tab_performance:
-            st.write("")
-            st.subheader("🗓️ Historical Trend Explorer")
 
-            #OC_f_tab_overall()
-            # جدول شيك يعرض أداء آخر الأيام المتوفرة في الداتا فريم المجمعة
-            df_display_trend = df_oc_daily.sort_values('oc_usage_day', ascending=False).copy()
-            #df_display_trend.columns = ['Date', 'Total Amount (EGP)', 'Total Transactions', 'Total Subscribers']
-            df_display_trend.columns = ['Date', 'Total Subscribers', 'Total Transactions', 'Total Amount (EGP)']
+
+
+
+
+    tab_overall, tab_alerts, tab_alerts_v2 , tab_ibro , tab_network = st.tabs(["🌐 Overall View", "🔔 Alerts Center", "🎯 Contribution Alerts (V2)" , "🚀 IBRO" , "📡 Network Performance"])
+
+
+
+    with tab_overall:
+        # 🔑 لو أدمن.. رن الفانكشن القديمة علطول ومفيش أيرورز هتظهر
+        if st.session_state.get("user_role") == "admin":
+            OC_tab_overall()
             
-            # تنسيق الأرقام عشان تطلع شياكة وبها فاصل آلاف
-            st.dataframe(
-                df_display_trend.style.format({
-                    'Total Amount (EGP)': '{:,.2f}',
-                    'Total Transactions': '{:,.0f}',
-                    'Total Subscribers': '{:,.0f}'
-                }), 
-                use_container_width=True, 
-                hide_index=True
-            )
+        # 🚫 العكس: لو مش أدمن (نتورك يوزر مثلاً).. اظهر له الأيرور بس والفانكشن مش هترن
+        if st.session_state.get("user_role") != "admin":
+            st.error("❌ Wrong Password / No Permission to view this tab.")
 
-        # --- 2️⃣ TAB: SERVICES BREAKDOWN ---
-        with sub_tab_breakdown:
-            st.write("")
-            # فلترة داتا اليوم الحالي لعرض تفاصيل الخدمات
-            df_curr_services = OC_SERVICES_PER_DAY_HIST[OC_SERVICES_PER_DAY_HIST['oc_usage_day'] == selected_day].copy()
+
+    with tab_alerts:
+        # 🔑 لو أدمن.. رن الفانكشن القديمة علطول ومفيش أيرورز هتظهر
+        if st.session_state.get("user_role") == "admin":
             
-            if not df_curr_services.empty:
-                col_b1, col_b2 = st.columns([2, 1])
-                
-                with col_b1:
-                    st.subheader("🛠️ Services Detailed Matrix")
-                    df_matrix = df_curr_services[['service_group', 'service_name', 'total_oc_trx_amts', 'total_oc_trx_cnts', 'total_unq_subs']].sort_values('total_oc_trx_amts', ascending=False)
-                    df_matrix.columns = ['Group', 'Service Name', 'Amount (EGP)', 'Trx Count', 'Subscribers']
-                    st.dataframe(df_matrix.style.format({'Amount (EGP)': '{:,.2f}', 'Trx Count': '{:,.0f}', 'Subscribers': '{:,.0f}'}), use_container_width=True, hide_index=True)
-                
-                with col_b2:
-                    st.subheader("🏆 Top Services (By Amount)")
-                    top_services = df_matrix.head(5)
-                    for idx, row in top_services.iterrows():
-                        st.metric(label=f"⭐ {row['Service Name']} ({row['Group']})", value=f"{row['Amount (EGP)']:,} EGP")
-            else:
-                st.info("No service breakdown available for the selected day.")
+           #render_alerts_center_ui(df_rch_alerts)
+           OC_tab_alerts() 
 
-        # --- 3️⃣ TAB: SERVICES ALERTS ---
-        with sub_tab_alerts:
-            st.write("")
-            st.subheader("🚨 Automatic Services Anomalies Detection")
-            st.caption("Detecting any service group that dropped or jumped by more than 5% compared to yesterday.")
             
-            # فلترة اليوم الحالي وامبارح للخدمات
-            df_c_serv = OC_SERVICES_PER_DAY_HIST[OC_SERVICES_PER_DAY_HIST['oc_usage_day'] == selected_day]
-            df_p_serv = OC_SERVICES_PER_DAY_HIST[OC_SERVICES_PER_DAY_HIST['oc_usage_day'] == oc_prev_day]
+        # 🚫 العكس: لو مش أدمن (نتورك يوزر مثلاً).. اظهر له الأيرور بس والفانكشن مش هترن
+        if st.session_state.get("user_role") != "admin":
+            st.error("❌ Wrong Password / No Permission to view this tab.")
+
+
+
+    with tab_alerts_v2:
+        # 🔑 لو أدمن.. رن الفانكشن القديمة علطول ومفيش أيرورز هتظهر
+        if st.session_state.get("user_role") == "admin":
             
-            if not df_c_serv.empty and not df_p_serv.empty:
-                # تجميع على مستوى الـ Service Group عشان التنبيهات تكون واضحة ومش زحمة
-                cg = df_c_serv.groupby('service_group')[['total_oc_trx_amts', 'total_unq_subs']].sum().reset_index()
-                pg = df_p_serv.groupby('service_group')[['total_oc_trx_amts', 'total_unq_subs']].sum().reset_index()
-                
-                oc_merged = cg.merge(pg, on='service_group', suffixes=('_curr', '_prev'))
-                
-                alert_triggered = False
-                
-                for _, row in oc_merged.iterrows():
-                    p_amt = row['total_oc_trx_amts_prev']
-                    c_amt = row['total_oc_trx_amts_curr']
-                    
-                    if p_amt > 0:
-                        g_pct = ((c_amt - p_amt) / p_amt) * 100
-                        if abs(g_pct) >= 5.0: # حد التنبيه 5%
-                            alert_triggered = True
-                            is_drop = g_pct < 0
-                            color = "#DA3633" if is_drop else "#238636"
-                            arrow = "▼" if is_drop else "▲"
-                            card_class = "drop-card" if is_drop else "up-card"
-                            
-                            st.markdown(f"""
-                            <div class="alert-card {card_class}">
-                                <span style="float:right; color:{color}; font-weight:800; font-size:18px;">
-                                    {arrow} {abs(round(g_pct, 1))}%
-                                </span>
-                                <div style="font-weight:700; margin-bottom:5px;">Group: Orange Cash {row['service_group']}</div>
-                                <div style="font-size:13px; color:#8B949E; margin-bottom:8px;">
-                                    Today Amount: <b>{c_amt:,} EGP</b> | Yesterday: <b>{p_amt:,} EGP</b>
-                                </div>
-                                <span class="metric-tag">Metric: Transaction Amount</span>
-                            </div>
-                            """, unsafe_allow_html=True)
-                
-                if not alert_triggered:
-                    st.success("✅ All Orange Cash Services are stable. No abnormal deviations detected!")
-            else:
-                st.info("Insufficient data to run anomalies detection for this day.")
-
-
-
-        # --- 3️⃣ TAB: SERVICES ALERTS (تعديل الشياكة والمؤشرات الفابريكا) ---
-        with sub_tab_alerts_V2:
-            st.write("")
-            st.subheader("🚨 Automatic Services Anomalies Center")
-            st.caption("Real-time monitoring for automated deviations in Orange Cash service groups compared to yesterday.")
+            OC_ALERTS_contribution()
             
-            if not OC_SERVICES_PER_DAY_HIST.empty:
-                df_c_serv = OC_SERVICES_PER_DAY_HIST[OC_SERVICES_PER_DAY_HIST['oc_usage_day'] == selected_day]
-                df_p_serv = OC_SERVICES_PER_DAY_HIST[OC_SERVICES_PER_DAY_HIST['oc_usage_day'] == oc_prev_day]
-                
-                if not df_c_serv.empty and not df_p_serv.empty:
-                    # تجميع الداتا على مستوى الـ Service Group
-                    cg = df_c_serv.groupby('service_group')[['total_oc_trx_amts']].sum().reset_index()
-                    pg = df_p_serv.groupby('service_group')[['total_oc_trx_amts']].sum().reset_index()
-                    oc_merged = cg.merge(pg, on='service_group', suffixes=('_curr', '_prev'))
-                    
-                    # 📈 1. المطبخ الخلفي: حساب العدادات والفرز قبل الرسم
-                    total_drops = 0
-                    critical_drops = 0
-                    total_ups = 0
-                    critical_ups = 0
-                    
-                    alerts_list = []
-                    
-                    for _, row in oc_merged.iterrows():
-                        p_amt = row['total_oc_trx_amts_prev']
-                        c_amt = row['total_oc_trx_amts_curr']
-                        
-                        if p_amt > 0:
-                            g_pct = ((c_amt - p_amt) / p_amt) * 100
-                            status_label, status_color = get_status_details(g_pct)
-                            
-                            # تصنيف الحالات بناءً على دالة الميزان الموحدة get_status_details
-                            if g_pct < 0:
-                                total_drops += 1
-                                if status_label in ["Critical", "Warning"]:
-                                    critical_drops += 1
-                            elif g_pct > 0:
-                                total_ups += 1
-                                if status_label in ["Critical", "Warning"]:
-                                    critical_ups += 1
-                                    
-                            # حفظ البيانات في لستة عشان نرسمها بعد شريط العدادات
-                            alerts_list.append({
-                                'group': row['service_group'],
-                                'pct': g_pct,
-                                'curr': c_amt,
-                                'prev': p_amt,
-                                'label': status_label,
-                                'color': status_color
-                            })
-                    
-                    # 📊 2. رسم الـ Executive Summary Strip (شريط العدادات العلوي الشيك)
-                    badge_cols = st.columns(4)
-                    
-                    with badge_cols[0]:
-                        st.markdown(f"""
-                        <div class="metric-badge-container" style="background-color: #1F191D; border-top: 4px solid #DA3633;">
-                            <div class="badge-label">TOTAL DROPS</div>
-                            <div class="badge-value" style="color: #DA3633;">{total_drops}</div>
-                        </div>
-                        """, unsafe_allow_html=True)
-                        
-                    with badge_cols[1]:
-                        st.markdown(f"""
-                        <div class="metric-badge-container" style="background-color: #241419; border-top: 4px solid #FF7B72;">
-                            <div class="badge-label">🚨 CRITICAL DROPS</div>
-                            <div class="badge-value" style="color: #FF7B72;">{critical_drops}</div>
-                        </div>
-                        """, unsafe_allow_html=True)
-                        
-                    with badge_cols[2]:
-                        st.markdown(f"""
-                        <div class="metric-badge-container" style="background-color: #17221C; border-top: 4px solid #238636;">
-                            <div class="badge-label">TOTAL JUMPS (UPS)</div>
-                            <div class="badge-value" style="color: #238636;">{total_ups}</div>
-                        </div>
-                        """, unsafe_allow_html=True)
-                        
-                    with badge_cols[3]:
-                        st.markdown(f"""
-                        <div class="metric-badge-container" style="background-color: #132321; border-top: 4px solid #3FB950;">
-                            <div class="badge-label">⭐ CRITICAL JUMPS</div>
-                            <div class="badge-value" style="color: #3FB950;">{critical_ups}</div>
-                        </div>
-                        """, unsafe_allow_html=True)
-                        
-                    st.markdown("<br>", unsafe_allow_html=True)
-                    
-                    # 🗂️ 3. فرز ورسم كروت الـ Anomalies بالتفصيل تحت العدادات
-                    if len(alerts_list) > 0:
-                        # ترتيب الكروت بحيث يعرض الـ Drops القوية الأول عشان تلفت الانتباه
-                        alerts_list = sorted(alerts_list, key=lambda x: x['pct'])
-                        
-                        for alert in alerts_list:
-                            # فلترة عشان ما نظهرش الـ Stable (العادي) ونركز على اللي فيه حركة أكتر من 2% أو حسب الـ Threshold
-                            if abs(alert['pct']) >= 2.0:
-                                is_drop = alert['pct'] < 0
-                                arrow = "▼" if is_drop else "▲"
-                                card_class = "drop-card" if is_drop else "up-card"
-                                
-                                st.markdown(f"""
-                                <div class="alert-card {card_class}">
-                                    <span style="float:right; color:{alert['color']}; font-weight:800; font-size:18px;">
-                                        {arrow} {abs(round(alert['pct'], 1))}%
-                                    </span>
-                                    <div style="font-weight:700; margin-bottom:5px; font-size:16px;">Group: Orange Cash - {alert['group']}</div>
-                                    <div style="font-size:13px; color:#8B949E; margin-bottom:8px;">
-                                        Today Amount: <b>{alert['curr']:,} EGP</b> | Yesterday: <b>{alert['prev']:,} EGP</b>
-                                    </div>
-                                    <span class="status-tag" style="background-color: {alert['color']}; color:white; padding: 2px 8px; font-size:11px;">{alert['label']}</span>
-                                    <span class="metric-tag" style="margin-left:5px;">Metric: Transaction Amount</span>
-                                </div>
-                                """, unsafe_allow_html=True)
-                    else:
-                        st.success("✅ All Orange Cash Services are stable. No abnormal deviations detected!")
-                else:
-                    st.info("Insufficient data to run anomalies detection for this day.")
-            else:
-                st.warning("Services raw file is empty.")  
-
-        # --- 3️⃣ TAB: SERVICES ALERTS (الأقوى والأجمل بتحديث الـ UI الموحد) ---
-        with sub_tab_alerts_V3:
-            st.write("")
-            st.subheader("🚨 Automatic Services Anomalies Center")
             
-            if not OC_SERVICES_PER_DAY_HIST.empty:
-                df_c_serv = OC_SERVICES_PER_DAY_HIST[OC_SERVICES_PER_DAY_HIST['oc_usage_day'] == selected_day]
-                df_p_serv = OC_SERVICES_PER_DAY_HIST[OC_SERVICES_PER_DAY_HIST['oc_usage_day'] == oc_prev_day]
-                
-                if not df_c_serv.empty and not df_p_serv.empty:
-                    # تجميع الداتا على مستوى الـ Service Group
-                    cg = df_c_serv.groupby('service_group')[['total_oc_trx_amts']].sum().reset_index()
-                    pg = df_p_serv.groupby('service_group')[['total_oc_trx_amts']].sum().reset_index()
-                    oc_merged = cg.merge(pg, on='service_group', suffixes=('_curr', '_prev'))
-                    
-                    # 📈 المطبخ الخلفي: عدادات الحالات الـ 4 للـ Drops والـ Ups
-                    drops_counters = {"Critical": 0, "Warning": 0, "Watch": 0, "Normal": 0}
-                    ups_counters   = {"Critical": 0, "Warning": 0, "Watch": 0, "Normal": 0}
-                    
-                    drops_list = []
-                    ups_list   = []
-                    
-                    for _, row in oc_merged.iterrows():
-                        p_amt = row['total_oc_trx_amts_prev']
-                        c_amt = row['total_oc_trx_amts_curr']
-                        
-                        if p_amt > 0:
-                            g_pct = ((c_amt - p_amt) / p_amt) * 100
-                            status_label, status_color = get_status_details(g_pct)
-                            
-                            alert_item = {
-                                'group': row['service_group'],
-                                'pct': g_pct,
-                                'curr': c_amt,
-                                'prev': p_amt,
-                                'label': status_label,
-                                'color': status_color
-                            }
-                            
-                            # الفرز والتصنيف جوه العدادات
-                            if g_pct < 0:
-                                drops_counters[status_label] += 1
-                                drops_list.append(alert_item)
-                            elif g_pct > 0:
-                                ups_counters[status_label] += 1
-                                ups_list.append(alert_item)
-                    
-                    # 📊 رسم الـ Mini Badges بالشكل الملموم الرشيق للـ Drops
-                    st.markdown("##### 📉 Services Volume Drops Status")
-                    b_cols_drop = st.columns(4)
-                    labels = ["Critical", "Warning", "Watch", "Normal"]
-                    colors = ["#DA3633", "#D97706", "#FBBF24", "#238636"] # ألوان الـ Badges الملمومة الرسمية
-                    
-                    for idx, lbl in enumerate(labels):
-                        with b_cols_drop[idx]:
-                            st.markdown(f"""
-                            <div class="metric-badge-container" style="background-color: #1F191D; border-top: 3px solid {colors[idx]}; padding: 4px 10px;">
-                                <div style="font-size: 11px; color: #8B949E; font-weight:600;">{lbl.upper()} DROPS</div>
-                                <div style="font-size: 18px; font-weight: 800; color: {colors[idx]};">{drops_counters[lbl]}</div>
-                            </div>
-                            """, unsafe_allow_html=True)
-                            
-                    # 📊 رسم الـ Mini Badges بالشكل الملموم الرشيق للـ Ups
-                    st.markdown("<div style='margin-top:15px;'></div>", unsafe_allow_html=True)
-                    st.markdown("##### 📈 Services Volume Jumps (Ups) Status")
-                    b_cols_ups = st.columns(4)
-                    for idx, lbl in enumerate(labels):
-                        with b_cols_ups[idx]:
-                            st.markdown(f"""
-                            <div class="metric-badge-container" style="background-color: #141F18; border-top: 3px solid {colors[idx]}; padding: 4px 10px;">
-                                <div style="font-size: 11px; color: #8B949E; font-weight:600;">{lbl.upper()} JUMPS</div>
-                                <div style="font-size: 18px; font-weight: 800; color: {colors[idx]};">{ups_counters[lbl]}</div>
-                            </div>
-                            """, unsafe_allow_html=True)
-
-                    st.markdown("<hr style='border: 1px solid #21262D; margin: 25px 0;'>", unsafe_allow_html=True)
-                    
-                    # 🗂️ تقسيم الشاشة لأعمدة (Two Columns Layout)
-                    col_left_drops, col_right_ups = st.columns(2)
-                    
-                    # --- العمود الأيسر: الـ Drops الكروت الملمومة الشيك ---
-                    with col_left_drops:
-                        st.markdown("### 📉 Volume Drops Details")
-                        if len(drops_list) > 0:
-                            # ترتيب حسب الهبوط الأشد
-                            drops_list = sorted(drops_list, key=lambda x: x['pct'])
-                            for alert in drops_list:
-                                if abs(alert['pct']) >= 1.5: # إظهار التحركات المؤثرة
-                                    st.markdown(f"""
-                                    <div class="alert-card drop-card" style="margin-bottom:12px; padding:12px;">
-                                        <span style="float:right; color:{alert['color']}; font-weight:800; font-size:16px;">
-                                            ▼ {abs(round(alert['pct'], 1))}%
-                                        </span>
-                                        <div style="font-weight:700; font-size:14px; margin-bottom:4px;">{alert['group']}</div>
-                                        <div style="font-size:12px; color:#8B949E; margin-bottom:8px;">
-                                            Today: <b>{alert['curr']:,}</b> | Yesterday: <b>{alert['prev']:,}</b>
-                                        </div>
-                                        <span class="status-tag" style="background-color: {alert['color']}; color:white; padding: 1px 6px; font-size:10px;">{alert['label']}</span>
-                                    </div>
-                                    """, unsafe_allow_html=True)
-                        else:
-                            st.success("✅ No service drops detected today.")
-                            
-                    # --- العمود الأيمن: الـ Ups الكروت الملمومة الشيك ---
-                    with col_right_ups:
-                        st.markdown("### 📈 Volume Jumps Details")
-                        if len(ups_list) > 0:
-                            # ترتيب حسب الصعود الأقوى
-                            ups_list = sorted(ups_list, key=lambda x: x['pct'], reverse=True)
-                            for alert in ups_list:
-                                if abs(alert['pct']) >= 1.5:
-                                    st.markdown(f"""
-                                    <div class="alert-card up-card" style="margin-bottom:12px; padding:12px;">
-                                        <span style="float:right; color:#3FB950; font-weight:800; font-size:16px;">
-                                            ▲ {abs(round(alert['pct'], 1))}%
-                                        </span>
-                                        <div style="font-weight:700; font-size:14px; margin-bottom:4px;">{alert['group']}</div>
-                                        <div style="font-size:12px; color:#8B949E; margin-bottom:8px;">
-                                            Today: <b>{alert['curr']:,}</b> | Yesterday: <b>{alert['prev']:,}</b>
-                                        </div>
-                                        <span class="status-tag" style="background-color: {alert['color']}; color:white; padding: 1px 6px; font-size:10px;">{alert['label']}</span>
-                                    </div>
-                                    """, unsafe_allow_html=True)
-                        else:
-                            st.info("ℹ️ No meaningful service jumps detected today.")
-                else:
-                    st.info("Insufficient data to run anomalies detection for this day.")
-            else:
-                st.warning("Services raw file is empty.")    
-
-
-        with sub_tab_alerts_V4: 
-            OC_f_tab_alerts()
-
-         
-
-                           
-    else:
-        st.warning("⚠️ No Orange Cash Data available to display. Please check the source file.")
+        # 🚫 العكس: لو مش أدمن (نتورك يوزر مثلاً).. اظهر له الأيرور بس والفانكشن مش هترن
+        if st.session_state.get("user_role") != "admin":
+            st.error("❌ Wrong Password / No Permission to view this tab.")
 
 
 
+    with tab_ibro:
+        # 🔑 لو أدمن.. رن الفانكشن القديمة علطول ومفيش أيرورز هتظهر
+        if st.session_state.get("user_role") == "admin":
+        
+            #OC_IBRO_tab()
+            st.info("💰 Orange Cash Monitoring Module - Coming Soon")
+            
+            
+        # 🚫 العكس: لو مش أدمن (نتورك يوزر مثلاً).. اظهر له الأيرور بس والفانكشن مش هترن
+        if st.session_state.get("user_role") != "admin":
+            st.error("❌ Wrong Password / No Permission to view this tab.")
+        
+        
 
-
-
-
-
-
-
-
-#================== LAST VERSION
-
+    with tab_network:
+        
+        #OC_SITES_TAB() 
+        st.info("💰 Orange Cash Monitoring Module - Coming Soon") 
