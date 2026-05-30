@@ -1895,7 +1895,7 @@ CASH_DIR     = "Data_Drive/orange_cash_module/"
 NETWORK_MODULES = {
 
     "recharge": {
-        "module_name": "Recharge",
+        "module_name": "RCH",
         "file_path": f"{RECHARGE_DIR}RCH_SITES_PER_DAY_HIST.parquet",
         "date_col": "rch_day",
         "metrics": {
@@ -1906,7 +1906,7 @@ NETWORK_MODULES = {
     },
 
     "voice": {
-        "module_name": "Voice",
+        "module_name": "OUG_VOICE",
         "file_path": f"{VOICE_DIR}OUG_VOICE_SITES_PER_DAY_HIST.parquet",
         "date_col": "vu_day",
         "metrics": {
@@ -1917,7 +1917,7 @@ NETWORK_MODULES = {
     },
 
     "data": {
-        "module_name": "Data",
+        "module_name": "DATA_USAGE",
         "file_path": f"{DATA_DIR}DATA_USAGE_SITES_PER_DAY_HIST.parquet",
         "date_col": "du_day",
         "metrics": {
@@ -1928,7 +1928,7 @@ NETWORK_MODULES = {
     },
 
     "oc": {
-        "module_name": "Orange Cash",
+        "module_name": "OC",
         "file_path": f"{CASH_DIR}OC_SITES_PER_DAY_HIST.parquet",
         "date_col": "oc_day",
         "metrics": {
@@ -2828,7 +2828,7 @@ def OC_tab_overall():
 
 
 
-def DATA_tab_overall():
+def DATA_USAGE_tab_overall():
     data_kpis = [
         ("DATA Users"    , "total_unq_subs"),
         ("Total MB"      , "total_mb"),
@@ -2900,7 +2900,7 @@ def DATA_USAGE_tab_alerts():
     df = get_dynamic_alerts(
         df_raw=DATA_USAGE_SITES_PER_DAY_HIST, 
         date_col="du_day", 
-        dimensions=["service_group"],
+        dimensions=["market_zone" , "governorate"],
         metrics_map={"total_mb": "Total DATA USAGE", "total_5g_mb": "5G DATA USAGE", "unq_subs": "Users"},
         thresholds=[2, 4, 8, 15] # سلم أورانج كاش مخصص وحساس أكتر
     )
@@ -2918,7 +2918,7 @@ def OUG_VOICE_tab_alerts():
     df = get_dynamic_alerts(
         df_raw=OUG_VOICE_SITES_PER_DAY_HIST, 
         date_col="vu_day", 
-        dimensions=["service_group"],
+        dimensions=["market_zone" , "governorate"],
         metrics_map={"total_oug_mous": "Minutes", "total_oug_cnts": "Calls", "unq_subs": "Users"},
         thresholds=[2, 4, 8, 15] # سلم أورانج كاش مخصص وحساس أكتر
     )
@@ -3004,7 +3004,7 @@ def OC_ALERTS_contribution():
         global_metrics_map=recharge_global_mapping, 
         thresholds=[5, 15, 30],
         selected_day=selected_day,
-        prefix="orange_cash"
+        prefix="OC"
     )
 
 
@@ -3019,26 +3019,26 @@ def DATA_USAGE_ALERTS_contribution():
     
     # 🧠 الماب الذكي: بما إن أسامي الـ RAW والـ GLOBAL متطابقة، الـ Key والـ Value هيبقوا زي بعض بالظبط!
     recharge_global_mapping = {
-        "total_unq_subs": "total_unq_subs",       # بيربط اليوزرز
-        "total_oc_trx_cnts": "total_oc_trx_cnts",   # بيربط الترانزاكشنز
-        "total_oc_trx_amts": "total_oc_trx_amts"    # بيربط المبالغ (استخدمنا total عشان دي الإجمالي)
+        "unq_subs": "total_unq_subs",       # بيربط اليوزرز
+        "total_mb": "total_mb"   # بيربط الترانزاكشنز
+        # "total_oc_trx_amts": "total_oc_trx_amts"    # بيربط المبالغ (استخدمنا total عشان دي الإجمالي)
     }
     
     render_contribution_section(
-        df_raw=OC_SERVICES_PER_DAY_HIST, 
-        df_global=OC_PER_DAY_HIST, 
-        date_col="oc_usage_day", 
-        dimensions=["service_group"], 
+        df_raw=DATA_USAGE_SITES_PER_DAY_HIST, 
+        df_global=data_daily_summary, 
+        date_col="du_day", 
+        dimensions=["market_zone" , "governorate"],
         # 🚨 الـ Keys هنا بقت مطابقة لأعمدة الـ RAW الحقيقية (total_...) عشان الباندا تفرح ومتقفش
         metrics_map={
-            "total_unq_subs": "Subscribers", 
-            "total_oc_trx_cnts": "Transactions", 
-            "total_oc_trx_amts": "Amount"
+            "unq_subs": "Subscribers", 
+            "total_mb": "DU MB"
+            # "total_oc_trx_amts": "Amount"
         },
         global_metrics_map=recharge_global_mapping, 
         thresholds=[5, 15, 30],
         selected_day=selected_day,
-        prefix="orange_cash"
+        prefix="DATA_USAGE"
     )
 
 
@@ -3049,30 +3049,30 @@ def DATA_USAGE_ALERTS_contribution():
 
 
 
-def OC_ALERTS_contribution():
+def OUG_VOICE_ALERTS_contribution():
     
     # 🧠 الماب الذكي: بما إن أسامي الـ RAW والـ GLOBAL متطابقة، الـ Key والـ Value هيبقوا زي بعض بالظبط!
     recharge_global_mapping = {
-        "total_unq_subs": "total_unq_subs",       # بيربط اليوزرز
-        "total_oc_trx_cnts": "total_oc_trx_cnts",   # بيربط الترانزاكشنز
-        "total_oc_trx_amts": "total_oc_trx_amts"    # بيربط المبالغ (استخدمنا total عشان دي الإجمالي)
+        "unq_subs"      : "total_unq_subs",       # بيربط اليوزرز
+        "total_oug_cnts": "total_oug_cnts",   # بيربط الترانزاكشنز
+        "total_oug_mous": "total_oug_mous"    # بيربط المبالغ (استخدمنا total عشان دي الإجمالي)
     }
     
     render_contribution_section(
-        df_raw=OC_SERVICES_PER_DAY_HIST, 
-        df_global=OC_PER_DAY_HIST, 
-        date_col="oc_usage_day", 
-        dimensions=["service_group"], 
+        df_raw=OUG_VOICE_SITES_PER_DAY_HIST, 
+        df_global=voice_daily_summary, 
+        date_col="vu_day", 
+        dimensions=["market_zone" , "governorate"], 
         # 🚨 الـ Keys هنا بقت مطابقة لأعمدة الـ RAW الحقيقية (total_...) عشان الباندا تفرح ومتقفش
         metrics_map={
-            "total_unq_subs": "Subscribers", 
-            "total_oc_trx_cnts": "Transactions", 
-            "total_oc_trx_amts": "Amount"
+            "unq_subs"      : "Subscribers", 
+            "total_oug_cnts": "CALLS", 
+            "total_oug_mous": "Minutes"
         },
         global_metrics_map=recharge_global_mapping, 
         thresholds=[5, 15, 30],
         selected_day=selected_day,
-        prefix="orange_cash"
+        prefix="OUG_VOICE"
     )
 
 
@@ -3093,17 +3093,72 @@ def OC_ALERTS_contribution():
 #==========================
 
 
-
 def RCH_IBRO_tab():
 
     f_tab_dynamic_dashboard(
-        tab_title="🚀 IBRO Behavioral Data Center",
+        tab_title="🚀 RCH IBRO Behavioral Data Center",
         df_source = RCH_IBRO_PER_DAY_HIST,
         dimensions=['mode', 'tariff_sub_category_2', 'no_of_multisim'],
         prefix="ibro_tab",
         waterfall_dim="market_zone",
         mirror_dim="governorate"
     )
+
+
+
+
+
+def OC_IBRO_tab():
+
+    f_tab_dynamic_dashboard(
+        tab_title="🚀 WALLET IBRO Behavioral Data Center",
+        df_source = OC_IBRO_PER_DAY_HIST,
+        dimensions=['mode', 'tariff_sub_category_2', 'no_of_multisim'],
+        prefix="ibro_tab",
+        waterfall_dim="market_zone",
+        mirror_dim="governorate"
+    )
+
+
+
+
+
+
+
+
+def DATA_USAGE_IBRO_tab():
+
+    f_tab_dynamic_dashboard(
+        tab_title="🚀 DATA_USAGE IBRO Behavioral Data Center",
+        df_source = DATA_USAGE_IBRO_PER_DAY_HIST,
+        dimensions=['mode', 'tariff_sub_category_2', 'no_of_multisim'],
+        prefix="ibro_tab",
+        waterfall_dim="market_zone",
+        mirror_dim="governorate"
+    )
+
+
+
+
+
+
+
+
+def OUG_VOICE_IBRO_tab():
+
+    f_tab_dynamic_dashboard(
+        tab_title="🚀 OUG_VOICE IBRO Behavioral Data Center",
+        df_source = OUG_VOICE_IBRO_PER_DAY_HIST,
+        dimensions=['mode', 'tariff_sub_category_2', 'no_of_multisim'],
+        prefix="ibro_tab",
+        waterfall_dim="market_zone",
+        mirror_dim="governorate"
+    )
+
+
+
+
+
 
 
 
@@ -3135,9 +3190,31 @@ def RCH_IBRO_tab():
 #     f_tab_network_dynamic(df_net, dims, target_day, metrics)
 
 
+
+
 def RCH_SITES_TAB():
 
-    f_tab_network("recharge", selected_day)
+    f_tab_network("RCH", selected_day)
+
+
+
+def OC_SITES_TAB():
+
+    f_tab_network("OC", selected_day)
+
+
+
+
+def DATA_USAGE_SITES_TAB():
+
+    f_tab_network("DATA_USAGE", selected_day)
+
+
+
+        
+def OUG_VOICE_SITES_TAB():
+
+    f_tab_network("OUG_VOICE", selected_day)
 
 
 
@@ -3412,7 +3489,7 @@ with main_tab_data:
     with tab_overall:
         # 🔑 لو أدمن.. رن الفانكشن القديمة علطول ومفيش أيرورز هتظهر
         if st.session_state.get("user_role") == "admin":
-            DATA_tab_overall()
+            DATA_USAGE_tab_overall()
             
         # 🚫 العكس: لو مش أدمن (نتورك يوزر مثلاً).. اظهر له الأيرور بس والفانكشن مش هترن
         if st.session_state.get("user_role") != "admin":
@@ -3424,8 +3501,8 @@ with main_tab_data:
         if st.session_state.get("user_role") == "admin":
             
            #render_alerts_center_ui(df_rch_alerts)
-           #OC_tab_alerts() 
-           st.info("💰 DATA USAGE Monitoring Module - Coming Soon") 
+           DATA_USAGE_tab_alerts() 
+        #    st.info("💰 DATA USAGE Monitoring Module - Coming Soon") 
 
             
         # 🚫 العكس: لو مش أدمن (نتورك يوزر مثلاً).. اظهر له الأيرور بس والفانكشن مش هترن
@@ -3438,8 +3515,8 @@ with main_tab_data:
         # 🔑 لو أدمن.. رن الفانكشن القديمة علطول ومفيش أيرورز هتظهر
         if st.session_state.get("user_role") == "admin":
             
-            #OC_ALERTS_contribution()
-            st.info("💰 DATA USAGE Monitoring Module - Coming Soon") 
+            DATA_USAGE_ALERTS_contribution()
+            # st.info("💰 DATA USAGE Monitoring Module - Coming Soon") 
             
             
         # 🚫 العكس: لو مش أدمن (نتورك يوزر مثلاً).. اظهر له الأيرور بس والفانكشن مش هترن
@@ -3452,8 +3529,8 @@ with main_tab_data:
         # 🔑 لو أدمن.. رن الفانكشن القديمة علطول ومفيش أيرورز هتظهر
         if st.session_state.get("user_role") == "admin":
         
-            #OC_IBRO_tab()
-            st.info("💰 DATA USAGE Monitoring Module - Coming Soon") 
+            DATA_USAGE_IBRO_tab()
+            # st.info("💰 DATA USAGE Monitoring Module - Coming Soon") 
             
             
         # 🚫 العكس: لو مش أدمن (نتورك يوزر مثلاً).. اظهر له الأيرور بس والفانكشن مش هترن
@@ -3464,8 +3541,8 @@ with main_tab_data:
 
     with tab_network:
         
-        #OC_SITES_TAB() 
-        st.info("💰 DATA USAGE Monitoring Module - Coming Soon") 
+        DATA_USAGE_SITES_TAB() 
+        # st.info("💰 DATA USAGE Monitoring Module - Coming Soon") 
 
 
 
