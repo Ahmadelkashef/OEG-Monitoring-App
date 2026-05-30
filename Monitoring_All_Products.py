@@ -2417,16 +2417,48 @@ def load_data():
         # Read From Repo
         RCH_PER_DAY_HIST = pd.read_parquet(f"{RECHARGE_DIR}RCH_PER_DAY_HIST.parquet")
         RCH_PER_DAY_HIST['RCH_DAY'] = pd.to_datetime(RCH_PER_DAY_HIST['RCH_DAY'])
+
+
+        DATA_USAGE_PER_DAY_HIST  = pd.read_parquet(f"{DATA_DIR}DATA_USAGE_PER_DAY_HIST.parquet")
+        DATA_USAGE_PER_DAY_HIST['data_usage_day'] = pd.to_datetime(DATA_USAGE_PER_DAY_HIST['data_usage_day'])
+
+
+        OUG_VOICE_PER_DAY_HIST   = pd.read_parquet(f"{VOICE_DIR}OUG_VOICE_PER_DAY_HIST.parquet")
+        OUG_VOICE_PER_DAY_HIST['voice_usage_day'] = pd.to_datetime(OUG_VOICE_PER_DAY_HIST['voice_usage_day'])
+
+
+        OC_PER_DAY_HIST  = pd.read_parquet(f"{CASH_DIR}OC_PER_DAY_HIST.parquet")
+        OC_PER_DAY_HIST['oc_usage_day']           = pd.to_datetime(OC_PER_DAY_HIST['oc_usage_day'])
+
+
+        OC_SERVICES_PER_DAY_HIST = pd.read_parquet(f"{CASH_DIR}OC_SERVICES_PER_DAY_HIST.parquet")
+        OC_SERVICES_PER_DAY_HIST['oc_usage_day']  = pd.to_datetime(OC_SERVICES_PER_DAY_HIST['oc_usage_day'])
+
+
+
+
+
+
         
-
-
-        #RCH_IBRO_PER_DAY_HIST = pd.read_parquet("IBRO_RCH_PER_DAY_HIST.parquet")
         RCH_IBRO_PER_DAY_HIST = pd.read_parquet(f"{RECHARGE_DIR}RCH_IBRO_PER_DAY_HIST.parquet")
         RCH_IBRO_PER_DAY_HIST['reported_date'] = pd.to_datetime(RCH_IBRO_PER_DAY_HIST['reported_date'])
 
 
+        DATA_USAGE_IBRO_PER_DAY_HIST = pd.read_parquet(f"{DATA_DIR}DATA_USAGE_IBRO_PER_DAY_HIST.parquet")
+        DATA_USAGE_IBRO_PER_DAY_HIST['reported_date'] = pd.to_datetime(DATA_USAGE_IBRO_PER_DAY_HIST['reported_date'])
 
-        return RCH_PER_DAY_HIST , RCH_IBRO_PER_DAY_HIST
+
+        OUG_VOICE_IBRO_PER_DAY_HIST = pd.read_parquet(f"{VOICE_DIR}OUG_VOICE_IBRO_PER_DAY_HIST.parquet")
+        OUG_VOICE_IBRO_PER_DAY_HIST['reported_date'] = pd.to_datetime(OUG_VOICE_IBRO_PER_DAY_HIST['reported_date'])
+
+
+        OC_IBRO_PER_DAY_HIST = pd.read_parquet(f"{CASH_DIR}OC_IBRO_PER_DAY_HIST.parquet")
+        OC_IBRO_PER_DAY_HIST['reported_date'] = pd.to_datetime(OC_IBRO_PER_DAY_HIST['reported_date'])
+
+
+
+        return RCH_PER_DAY_HIST , DATA_USAGE_PER_DAY_HIST , OUG_VOICE_PER_DAY_HIST , OC_PER_DAY_HIST , OC_SERVICES_PER_DAY_HIST , RCH_IBRO_PER_DAY_HIST , DATA_USAGE_IBRO_PER_DAY_HIST , OUG_VOICE_IBRO_PER_DAY_HIST , OC_IBRO_PER_DAY_HIST
+               
     
 
     except Exception as e:
@@ -2457,32 +2489,32 @@ def load_data():
 
 #==========SUMMARY HEADER CARDS
 
-#@st.cache_data(ttl=600)
-def load_master_SUMMARY_data():
-    try:
-        # قراءة ملف الباركيه الماستر الـ 18 ميجا المرفوع في الريبو
-        # DATA_USAGE_PER_DAY_HIST      = pd.read_parquet("DATA_USAGE_PER_DAY_HIST.parquet")
-        # OUG_VOICE_PER_DAY_HIST = pd.read_parquet("OUG_VOICE_PER_DAY_HIST.parquet")
-        # OC_PER_DAY_HIST        = pd.read_parquet("OC_PER_DAY_HIST.parquet")
+# #@st.cache_data(ttl=600)
+# def load_data():
+#     try:
+#         # قراءة ملف الباركيه الماستر الـ 18 ميجا المرفوع في الريبو
+#         # DATA_USAGE_PER_DAY_HIST      = pd.read_parquet("DATA_USAGE_PER_DAY_HIST.parquet")
+#         # OUG_VOICE_PER_DAY_HIST = pd.read_parquet("OUG_VOICE_PER_DAY_HIST.parquet")
+#         # OC_PER_DAY_HIST        = pd.read_parquet("OC_PER_DAY_HIST.parquet")
 
-        DATA_USAGE_PER_DAY_HIST  = pd.read_parquet(f"{DATA_DIR}DATA_USAGE_PER_DAY_HIST.parquet")
-        OUG_VOICE_PER_DAY_HIST   = pd.read_parquet(f"{VOICE_DIR}OUG_VOICE_PER_DAY_HIST.parquet")
-        OC_PER_DAY_HIST          = pd.read_parquet(f"{CASH_DIR}OC_PER_DAY_HIST.parquet")
-        OC_SERVICES_PER_DAY_HIST = pd.read_parquet(f"{CASH_DIR}OC_SERVICES_PER_DAY_HIST.parquet")
-
-
-
-        DATA_USAGE_PER_DAY_HIST['data_usage_day']       = pd.to_datetime(DATA_USAGE_PER_DAY_HIST['data_usage_day'])
-        OUG_VOICE_PER_DAY_HIST['voice_usage_day'] = pd.to_datetime(OUG_VOICE_PER_DAY_HIST['voice_usage_day'])
-        OC_PER_DAY_HIST['oc_usage_day']           = pd.to_datetime(OC_PER_DAY_HIST['oc_usage_day'])
-        OC_SERVICES_PER_DAY_HIST['oc_usage_day']  = pd.to_datetime(OC_SERVICES_PER_DAY_HIST['oc_usage_day'])
+#         DATA_USAGE_PER_DAY_HIST  = pd.read_parquet(f"{DATA_DIR}DATA_USAGE_PER_DAY_HIST.parquet")
+#         OUG_VOICE_PER_DAY_HIST   = pd.read_parquet(f"{VOICE_DIR}OUG_VOICE_PER_DAY_HIST.parquet")
+#         OC_PER_DAY_HIST          = pd.read_parquet(f"{CASH_DIR}OC_PER_DAY_HIST.parquet")
+#         OC_SERVICES_PER_DAY_HIST = pd.read_parquet(f"{CASH_DIR}OC_SERVICES_PER_DAY_HIST.parquet")
 
 
 
-        return DATA_USAGE_PER_DAY_HIST , OUG_VOICE_PER_DAY_HIST , OC_PER_DAY_HIST , OC_SERVICES_PER_DAY_HIST
-    except Exception as e:
-        st.error(f"❌ Error loading SUMMARY_data': {e}")
-        return pd.DataFrame()
+#         DATA_USAGE_PER_DAY_HIST['data_usage_day'] = pd.to_datetime(DATA_USAGE_PER_DAY_HIST['data_usage_day'])
+#         OUG_VOICE_PER_DAY_HIST['voice_usage_day'] = pd.to_datetime(OUG_VOICE_PER_DAY_HIST['voice_usage_day'])
+#         OC_PER_DAY_HIST['oc_usage_day']           = pd.to_datetime(OC_PER_DAY_HIST['oc_usage_day'])
+#         OC_SERVICES_PER_DAY_HIST['oc_usage_day']  = pd.to_datetime(OC_SERVICES_PER_DAY_HIST['oc_usage_day'])
+
+
+
+#         return DATA_USAGE_PER_DAY_HIST , OUG_VOICE_PER_DAY_HIST , OC_PER_DAY_HIST , OC_SERVICES_PER_DAY_HIST
+#     except Exception as e:
+#         st.error(f"❌ Error loading SUMMARY_data': {e}")
+#         return pd.DataFrame()
 
 
 
@@ -2506,8 +2538,9 @@ def load_master_SUMMARY_data():
 with st.spinner('Fetching Data...'):
     try:
         #RCH_PER_DAY_HIST = load_data()
-        RCH_PER_DAY_HIST, RCH_IBRO_PER_DAY_HIST = load_data()
-        DATA_USAGE_PER_DAY_HIST , OUG_VOICE_PER_DAY_HIST , OC_PER_DAY_HIST , OC_SERVICES_PER_DAY_HIST = load_master_SUMMARY_data()
+        # RCH_PER_DAY_HIST, RCH_IBRO_PER_DAY_HIST = load_data()
+        # DATA_USAGE_PER_DAY_HIST , OUG_VOICE_PER_DAY_HIST , OC_PER_DAY_HIST , OC_SERVICES_PER_DAY_HIST = load_data()
+        RCH_PER_DAY_HIST , DATA_USAGE_PER_DAY_HIST , OUG_VOICE_PER_DAY_HIST , OC_PER_DAY_HIST , OC_SERVICES_PER_DAY_HIST , RCH_IBRO_PER_DAY_HIST , DATA_USAGE_IBRO_PER_DAY_HIST , OUG_VOICE_IBRO_PER_DAY_HIST , OC_IBRO_PER_DAY_HIST =  load_data()
     except Exception as e:
         st.error(f'Error connecting to database: {e}')
         st.stop()
@@ -2571,6 +2604,23 @@ data_daily_summary["avg_gb"] = data_daily_summary["total_gb"] / data_daily_summa
 
 
 data_daily_summary = data_daily_summary.sort_values('data_usage_day')
+
+
+
+
+
+
+voice_daily_summary = OUG_VOICE_PER_DAY_HIST.groupby('voice_usage_day').agg({
+        'total_unq_subs': 'max',
+        'total_oug_cnts': 'max',
+        'total_oug_mous': 'max'
+    }).reset_index()
+
+voice_daily_summary["avg_calls_cnts"] = voice_daily_summary["total_oug_cnts"] / voice_daily_summary["total_unq_subs"]
+voice_daily_summary["avg_calls_mnts"] = voice_daily_summary["total_oug_mous"] / voice_daily_summary["total_unq_subs"]
+
+
+voice_daily_summary = voice_daily_summary.sort_values('voice_usage_day')
 
 
 
