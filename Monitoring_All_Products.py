@@ -1922,7 +1922,7 @@ NETWORK_MODULES = {
         "date_col": "du_day",
         "metrics": {
             "Subscribers"   : "unq_subs",
-            "Total MB Usage": "total_mb",
+            "MB Usage": "total_mb",
             "5G MB Usage"   : "total_5g_mb"
         }
     },
