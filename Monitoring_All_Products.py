@@ -11,6 +11,9 @@ import json # هنحتاج دي عشان نقرأ بيانات الـ Secrets
 
 from itertools import combinations
 
+import plotly.express as px
+import plotly.graph_objects as go
+
 
 # =========================================================
 # PAGE CONFIG
@@ -893,12 +896,6 @@ def render_contribution_section(df_raw, df_global, date_col, dimensions, metrics
 #==================================
 
 
-
-
-import pandas as pd
-import streamlit as st
-import plotly.express as px
-import plotly.graph_objects as go
 
 def process_behavioral_data_dynamic(df_day_filtered, chosen_filters):
     """
@@ -1890,11 +1887,9 @@ def f_tab_dynamic_dashboard(
 
 
 RECHARGE_DIR = "Data_Drive/recharge_module/"
-# DATA_DIR     = "Data_Drive/data_module/"
-# VOICE_DIR    = "Data_Drive/voice_module/"
-# CASH_DIR     = "Data_Drive/orange_cash_module/"
-
-# RCH_SITES_PER_DAY_HIST = pd.read_parquet(f"{RECHARGE_DIR}RCH_SITES_PER_DAY_HIST.parquet"
+DATA_DIR     = "Data_Drive/data_module/"
+VOICE_DIR    = "Data_Drive/voice_module/"
+CASH_DIR     = "Data_Drive/orange_cash_module/"
 
 
 NETWORK_MODULES = {
@@ -1912,7 +1907,7 @@ NETWORK_MODULES = {
 
     "voice": {
         "module_name": "Voice",
-        "file_path": f"{RECHARGE_DIR}RCH_SITES_PER_DAY_HIST.parquet",
+        "file_path": f"{VOICE_DIR}OUG_VOICE_SITES_PER_DAY_HIST.parquet",
         "date_col": "voice_day",
         "metrics": {
             "Subscribers": "unq_subs",
@@ -1923,7 +1918,7 @@ NETWORK_MODULES = {
 
     "data": {
         "module_name": "Data",
-        "file_path": f"{RECHARGE_DIR}RCH_SITES_PER_DAY_HIST.parquet",
+        "file_path": f"{DATA_DIR}DATA_USAGE_SITES_PER_DAY_HIST.parquet",
         "date_col": "usage_day",
         "metrics": {
             "Subscribers": "unq_subs",
@@ -1933,7 +1928,7 @@ NETWORK_MODULES = {
 
     "oc": {
         "module_name": "Orange Cash",
-        "file_path": f"{RECHARGE_DIR}RCH_SITES_PER_DAY_HIST.parquet",
+        "file_path": f"{CASH_DIR}OC_SITES_PER_DAY_HIST.parquet",
         "date_col": "trx_day",
         "metrics": {
             "Subscribers": "unq_subs",
@@ -2419,10 +2414,10 @@ CASH_DIR     = "Data_Drive/orange_cash_module/"
 #@st.cache_data(ttl=60)
 def load_data():
     try:
-        # قراءة ملف الباركيه الماستر الـ 18 ميجا المرفوع في الريبو
-        #RCH_PER_DAY_HIST = pd.read_parquet("Recharge_Monitoring_Data_HIST.parquet")
+        # Read From Repo
         RCH_PER_DAY_HIST = pd.read_parquet(f"{RECHARGE_DIR}RCH_PER_DAY_HIST.parquet")
         RCH_PER_DAY_HIST['RCH_DAY'] = pd.to_datetime(RCH_PER_DAY_HIST['RCH_DAY'])
+        
 
 
         #RCH_IBRO_PER_DAY_HIST = pd.read_parquet("IBRO_RCH_PER_DAY_HIST.parquet")
@@ -2445,17 +2440,17 @@ def load_data():
 
 
 
-#@st.cache_data(ttl=600)
-def load_master_network_data():
-    try:
-        # قراءة ملف الباركيه الماستر الـ 18 ميجا المرفوع في الريبو
-        #RCH_SITES_PER_DAY_HIST = pd.read_parquet("network_master.parquet")
-        RCH_SITES_PER_DAY_HIST = pd.read_parquet(f"{RECHARGE_DIR}RCH_SITES_PER_DAY_HIST.parquet")
-        RCH_SITES_PER_DAY_HIST['rch_day'] = pd.to_datetime(RCH_SITES_PER_DAY_HIST['rch_day'])
-        return RCH_SITES_PER_DAY_HIST
-    except Exception as e:
-        st.error(f"❌ Error loading 'RCH_SITES_PER_DAY_HIST.parquet': {e}")
-        return pd.DataFrame()
+# #@st.cache_data(ttl=600)
+# def load_master_network_data():
+#     try:
+#         # قراءة ملف الباركيه الماستر الـ 18 ميجا المرفوع في الريبو
+#         #RCH_SITES_PER_DAY_HIST = pd.read_parquet("network_master.parquet")
+#         RCH_SITES_PER_DAY_HIST = pd.read_parquet(f"{RECHARGE_DIR}RCH_SITES_PER_DAY_HIST.parquet")
+#         RCH_SITES_PER_DAY_HIST['rch_day'] = pd.to_datetime(RCH_SITES_PER_DAY_HIST['rch_day'])
+#         return RCH_SITES_PER_DAY_HIST
+#     except Exception as e:
+#         st.error(f"❌ Error loading 'RCH_SITES_PER_DAY_HIST.parquet': {e}")
+#         return pd.DataFrame()
     
 
 
@@ -2470,7 +2465,7 @@ def load_master_SUMMARY_data():
         # OUG_VOICE_PER_DAY_HIST = pd.read_parquet("OUG_VOICE_PER_DAY_HIST.parquet")
         # OC_PER_DAY_HIST        = pd.read_parquet("OC_PER_DAY_HIST.parquet")
 
-        DATA_USAGE_PER_DAY_HIST        = pd.read_parquet(f"{DATA_DIR}DATA_USAGE_PER_DAY_HIST.parquet")
+        DATA_USAGE_PER_DAY_HIST  = pd.read_parquet(f"{DATA_DIR}DATA_USAGE_PER_DAY_HIST.parquet")
         OUG_VOICE_PER_DAY_HIST   = pd.read_parquet(f"{VOICE_DIR}OUG_VOICE_PER_DAY_HIST.parquet")
         OC_PER_DAY_HIST          = pd.read_parquet(f"{CASH_DIR}OC_PER_DAY_HIST.parquet")
         OC_SERVICES_PER_DAY_HIST = pd.read_parquet(f"{CASH_DIR}OC_SERVICES_PER_DAY_HIST.parquet")
