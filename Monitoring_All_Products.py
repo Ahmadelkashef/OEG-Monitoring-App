@@ -2465,19 +2465,19 @@ def load_data():
 
 
         RCH_SITES_PER_DAY_HIST = pd.read_parquet(f"{RECHARGE_DIR}RCH_SITES_PER_DAY_HIST.parquet")
-        RCH_SITES_PER_DAY_HIST['rch_day'] = pd.to_datetime(RCH_SITES_PER_DAY_HIST['reported_date'])
+        RCH_SITES_PER_DAY_HIST['rch_day'] = pd.to_datetime(RCH_SITES_PER_DAY_HIST['rch_day'])
 
 
         DATA_USAGE_SITES_PER_DAY_HIST = pd.read_parquet(f"{DATA_DIR}DATA_USAGE_SITES_PER_DAY_HIST.parquet")
-        DATA_USAGE_SITES_PER_DAY_HIST['du_day'] = pd.to_datetime(DATA_USAGE_SITES_PER_DAY_HIST['reported_date'])
+        DATA_USAGE_SITES_PER_DAY_HIST['du_day'] = pd.to_datetime(DATA_USAGE_SITES_PER_DAY_HIST['du_day'])
 
 
         OUG_VOICE_SITES_PER_DAY_HIST = pd.read_parquet(f"{VOICE_DIR}OUG_VOICE_SITES_PER_DAY_HIST.parquet")
-        OUG_VOICE_SITES_PER_DAY_HIST['vu_day'] = pd.to_datetime(OUG_VOICE_SITES_PER_DAY_HIST['reported_date'])
+        OUG_VOICE_SITES_PER_DAY_HIST['vu_day'] = pd.to_datetime(OUG_VOICE_SITES_PER_DAY_HIST['vu_day'])
 
 
         OC_SITES_PER_DAY_HIST = pd.read_parquet(f"{CASH_DIR}OC_SITES_PER_DAY_HIST.parquet")
-        OC_SITES_PER_DAY_HIST['oc_day'] = pd.to_datetime(OC_SITES_PER_DAY_HIST['reported_date'])
+        OC_SITES_PER_DAY_HIST['oc_day'] = pd.to_datetime(OC_SITES_PER_DAY_HIST['oc_day'])
 
 
 
