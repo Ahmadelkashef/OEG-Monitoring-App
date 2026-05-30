@@ -1899,9 +1899,9 @@ NETWORK_MODULES = {
         "file_path": f"{RECHARGE_DIR}RCH_SITES_PER_DAY_HIST.parquet",
         "date_col": "rch_day",
         "metrics": {
-            "RCH_Subscribers" : "unq_subs",
-            "RCH_Transactions": "total_rch_cnt",
-            "RCH_Amount"      : "total_rch_amt"
+            "Subscribers" : "unq_subs",
+            "Transactions": "total_rch_cnt",
+            "Amount"      : "total_rch_amt"
         }
     },
 
@@ -1910,9 +1910,9 @@ NETWORK_MODULES = {
         "file_path": f"{VOICE_DIR}OUG_VOICE_SITES_PER_DAY_HIST.parquet",
         "date_col": "vu_day",
         "metrics": {
-            "OUG_VOICE_Subscribers": "unq_subs",
-            "OUG_VOICE_Minutes"    : "total_oug_mous",
-            "OUG_VOICE_Calls"      : "total_oug_cnts"
+            "Subscribers": "unq_subs",
+            "Minutes"    : "total_oug_mous",
+            "Calls"      : "total_oug_cnts"
         }
     },
 
@@ -1921,9 +1921,9 @@ NETWORK_MODULES = {
         "file_path": f"{DATA_DIR}DATA_USAGE_SITES_PER_DAY_HIST.parquet",
         "date_col": "du_day",
         "metrics": {
-            "DATA_Subscribers" : "unq_subs",
-            "Total MB Usage"   : "total_mb",
-            "5G MB Usage"      : "total_5g_mb"
+            "Subscribers"   : "unq_subs",
+            "Total MB Usage": "total_mb",
+            "5G MB Usage"   : "total_5g_mb"
         }
     },
 
@@ -1932,9 +1932,9 @@ NETWORK_MODULES = {
         "file_path": f"{CASH_DIR}OC_SITES_PER_DAY_HIST.parquet",
         "date_col": "oc_day",
         "metrics": {
-            "OC_Subscribers" : "unq_subs",
-            "OC_Transactions": "total_oc_trx_cnts",
-            "OC_Amount"      : "total_oc_trx_amts"
+            "Subscribers" : "unq_subs",
+            "Transactions": "total_oc_trx_cnts",
+            "Amount"      : "total_oc_trx_amts"
         }
     }
 }
@@ -2849,7 +2849,7 @@ def OUG_VOICE_tab_overall():
         ("Avg CALLS / SUB"    , "avg_calls_cnts"),
         ("Avg Minutes / SUB"  , "avg_calls_mnts")
     ]
-    render_dynamic_detailed_cards(df=data_daily_summary, date_col="data_usage_day", kpis_config=data_kpis)   
+    render_dynamic_detailed_cards(df=voice_daily_summary, date_col="voice_usage_day", kpis_config=data_kpis)   
 
 
 
@@ -2895,13 +2895,13 @@ def OC_tab_alerts():
 
 
 
-def DATA_tab_alerts():
+def DATA_USAGE_tab_alerts():
 
     df = get_dynamic_alerts(
-        df_raw=OC_SERVICES_PER_DAY_HIST, 
-        date_col="oc_usage_day", 
+        df_raw=DATA_USAGE_SITES_PER_DAY_HIST, 
+        date_col="du_day", 
         dimensions=["service_group"],
-        metrics_map={"total_oc_trx_amts": "Volume (EGP)", "total_oc_trx_cnts": "Transactions", "total_unq_subs": "Users"},
+        metrics_map={"total_mb": "Total DATA USAGE", "total_5g_mb": "5G DATA USAGE", "unq_subs": "Users"},
         thresholds=[2, 4, 8, 15] # سلم أورانج كاش مخصص وحساس أكتر
     )
 
@@ -2916,10 +2916,10 @@ def DATA_tab_alerts():
 def OUG_VOICE_tab_alerts():
 
     df = get_dynamic_alerts(
-        df_raw=OC_SERVICES_PER_DAY_HIST, 
-        date_col="oc_usage_day", 
+        df_raw=OUG_VOICE_SITES_PER_DAY_HIST, 
+        date_col="vu_day", 
         dimensions=["service_group"],
-        metrics_map={"total_oc_trx_amts": "Volume (EGP)", "total_oc_trx_cnts": "Transactions", "total_unq_subs": "Users"},
+        metrics_map={"total_oug_mous": "Minutes", "total_oug_cnts": "Calls", "unq_subs": "Users"},
         thresholds=[2, 4, 8, 15] # سلم أورانج كاش مخصص وحساس أكتر
     )
 
@@ -2976,6 +2976,73 @@ def RCH_ALERTS_contribution():
 #     st.write("Real Columns in Orange Cash GLOBAL:", list(OC_PER_DAY_HIST.columns))
     
     
+
+
+
+
+
+def OC_ALERTS_contribution():
+    
+    # 🧠 الماب الذكي: بما إن أسامي الـ RAW والـ GLOBAL متطابقة، الـ Key والـ Value هيبقوا زي بعض بالظبط!
+    recharge_global_mapping = {
+        "total_unq_subs": "total_unq_subs",       # بيربط اليوزرز
+        "total_oc_trx_cnts": "total_oc_trx_cnts",   # بيربط الترانزاكشنز
+        "total_oc_trx_amts": "total_oc_trx_amts"    # بيربط المبالغ (استخدمنا total عشان دي الإجمالي)
+    }
+    
+    render_contribution_section(
+        df_raw=OC_SERVICES_PER_DAY_HIST, 
+        df_global=oc_daily_summary, 
+        date_col="oc_usage_day", 
+        dimensions=["service_group"], 
+        # 🚨 الـ Keys هنا بقت مطابقة لأعمدة الـ RAW الحقيقية (total_...) عشان الباندا تفرح ومتقفش
+        metrics_map={
+            "total_unq_subs": "Subscribers", 
+            "total_oc_trx_cnts": "Transactions", 
+            "total_oc_trx_amts": "Amount"
+        },
+        global_metrics_map=recharge_global_mapping, 
+        thresholds=[5, 15, 30],
+        selected_day=selected_day,
+        prefix="orange_cash"
+    )
+
+
+
+
+
+
+
+
+
+def DATA_USAGE_ALERTS_contribution():
+    
+    # 🧠 الماب الذكي: بما إن أسامي الـ RAW والـ GLOBAL متطابقة، الـ Key والـ Value هيبقوا زي بعض بالظبط!
+    recharge_global_mapping = {
+        "total_unq_subs": "total_unq_subs",       # بيربط اليوزرز
+        "total_oc_trx_cnts": "total_oc_trx_cnts",   # بيربط الترانزاكشنز
+        "total_oc_trx_amts": "total_oc_trx_amts"    # بيربط المبالغ (استخدمنا total عشان دي الإجمالي)
+    }
+    
+    render_contribution_section(
+        df_raw=OC_SERVICES_PER_DAY_HIST, 
+        df_global=OC_PER_DAY_HIST, 
+        date_col="oc_usage_day", 
+        dimensions=["service_group"], 
+        # 🚨 الـ Keys هنا بقت مطابقة لأعمدة الـ RAW الحقيقية (total_...) عشان الباندا تفرح ومتقفش
+        metrics_map={
+            "total_unq_subs": "Subscribers", 
+            "total_oc_trx_cnts": "Transactions", 
+            "total_oc_trx_amts": "Amount"
+        },
+        global_metrics_map=recharge_global_mapping, 
+        thresholds=[5, 15, 30],
+        selected_day=selected_day,
+        prefix="orange_cash"
+    )
+
+
+
 
 
 
