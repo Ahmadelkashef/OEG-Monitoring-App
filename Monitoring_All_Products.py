@@ -2457,7 +2457,31 @@ def load_data():
 
 
 
-        return RCH_PER_DAY_HIST , DATA_USAGE_PER_DAY_HIST , OUG_VOICE_PER_DAY_HIST , OC_PER_DAY_HIST , OC_SERVICES_PER_DAY_HIST , RCH_IBRO_PER_DAY_HIST , DATA_USAGE_IBRO_PER_DAY_HIST , OUG_VOICE_IBRO_PER_DAY_HIST , OC_IBRO_PER_DAY_HIST
+
+
+
+
+
+
+
+        RCH_SITES_PER_DAY_HIST = pd.read_parquet(f"{RECHARGE_DIR}RCH_SITES_PER_DAY_HIST.parquet")
+        RCH_SITES_PER_DAY_HIST['rch_day'] = pd.to_datetime(RCH_SITES_PER_DAY_HIST['reported_date'])
+
+
+        DATA_USAGE_SITES_PER_DAY_HIST = pd.read_parquet(f"{DATA_DIR}DATA_USAGE_SITES_PER_DAY_HIST.parquet")
+        DATA_USAGE_SITES_PER_DAY_HIST['du_day'] = pd.to_datetime(DATA_USAGE_SITES_PER_DAY_HIST['reported_date'])
+
+
+        OUG_VOICE_SITES_PER_DAY_HIST = pd.read_parquet(f"{VOICE_DIR}OUG_VOICE_SITES_PER_DAY_HIST.parquet")
+        OUG_VOICE_SITES_PER_DAY_HIST['vu_day'] = pd.to_datetime(OUG_VOICE_SITES_PER_DAY_HIST['reported_date'])
+
+
+        OC_SITES_PER_DAY_HIST = pd.read_parquet(f"{CASH_DIR}OC_SITES_PER_DAY_HIST.parquet")
+        OC_SITES_PER_DAY_HIST['oc_day'] = pd.to_datetime(OC_SITES_PER_DAY_HIST['reported_date'])
+
+
+
+        return RCH_PER_DAY_HIST , DATA_USAGE_PER_DAY_HIST , OUG_VOICE_PER_DAY_HIST , OC_PER_DAY_HIST , OC_SERVICES_PER_DAY_HIST , RCH_IBRO_PER_DAY_HIST , DATA_USAGE_IBRO_PER_DAY_HIST , OUG_VOICE_IBRO_PER_DAY_HIST , OC_IBRO_PER_DAY_HIST , RCH_SITES_PER_DAY_HIST , DATA_USAGE_SITES_PER_DAY_HIST , OUG_VOICE_SITES_PER_DAY_HIST , OC_SITES_PER_DAY_HIST
                
     
 
@@ -2540,7 +2564,7 @@ with st.spinner('Fetching Data...'):
         #RCH_PER_DAY_HIST = load_data()
         # RCH_PER_DAY_HIST, RCH_IBRO_PER_DAY_HIST = load_data()
         # DATA_USAGE_PER_DAY_HIST , OUG_VOICE_PER_DAY_HIST , OC_PER_DAY_HIST , OC_SERVICES_PER_DAY_HIST = load_data()
-        RCH_PER_DAY_HIST , DATA_USAGE_PER_DAY_HIST , OUG_VOICE_PER_DAY_HIST , OC_PER_DAY_HIST , OC_SERVICES_PER_DAY_HIST , RCH_IBRO_PER_DAY_HIST , DATA_USAGE_IBRO_PER_DAY_HIST , OUG_VOICE_IBRO_PER_DAY_HIST , OC_IBRO_PER_DAY_HIST =  load_data()
+        RCH_PER_DAY_HIST , DATA_USAGE_PER_DAY_HIST , OUG_VOICE_PER_DAY_HIST , OC_PER_DAY_HIST , OC_SERVICES_PER_DAY_HIST , RCH_IBRO_PER_DAY_HIST , DATA_USAGE_IBRO_PER_DAY_HIST , OUG_VOICE_IBRO_PER_DAY_HIST , OC_IBRO_PER_DAY_HIST , RCH_SITES_PER_DAY_HIST , DATA_USAGE_SITES_PER_DAY_HIST , OUG_VOICE_SITES_PER_DAY_HIST , OC_SITES_PER_DAY_HIST =  load_data()
     except Exception as e:
         st.error(f'Error connecting to database: {e}')
         st.stop()
@@ -2802,6 +2826,7 @@ def OC_tab_overall():
 
 
 
+
 def DATA_tab_overall():
     data_kpis = [
         ("DATA Users"    , "total_unq_subs"),
@@ -2809,7 +2834,22 @@ def DATA_tab_overall():
         ("Total GB"      , "total_gb"),
         ("Avg MB / SUB"  , "avg_mb")
     ]
-    render_dynamic_detailed_cards(df=data_daily_summary, date_col="data_usage_day", kpis_config=data_kpis)    
+    render_dynamic_detailed_cards(df=data_daily_summary, date_col="data_usage_day", kpis_config=data_kpis)   
+
+
+
+
+
+def OUG_VOICE_tab_overall():
+    data_kpis = [
+        ("OUG VOICE Users"    , "total_unq_subs"),
+        ("Total CALLS"        , "total_oug_cnts"),
+        ("Total Minutes"      , "total_oug_mous"),
+        ("Avg CALLS / SUB"    , "avg_calls_cnts"),
+        ("Avg Minutes / SUB"  , "avg_calls_mnts")
+    ]
+    render_dynamic_detailed_cards(df=data_daily_summary, date_col="data_usage_day", kpis_config=data_kpis)   
+
 
 
 
@@ -2838,6 +2878,41 @@ def RCH_tab_alerts():
 
 
 def OC_tab_alerts():
+
+    df = get_dynamic_alerts(
+        df_raw=OC_SERVICES_PER_DAY_HIST, 
+        date_col="oc_usage_day", 
+        dimensions=["service_group"],
+        metrics_map={"total_oc_trx_amts": "Volume (EGP)", "total_oc_trx_cnts": "Transactions", "total_unq_subs": "Users"},
+        thresholds=[2, 4, 8, 15] # سلم أورانج كاش مخصص وحساس أكتر
+    )
+
+
+    render_alerts_center_ui(df)
+
+
+
+
+
+def DATA_tab_alerts():
+
+    df = get_dynamic_alerts(
+        df_raw=OC_SERVICES_PER_DAY_HIST, 
+        date_col="oc_usage_day", 
+        dimensions=["service_group"],
+        metrics_map={"total_oc_trx_amts": "Volume (EGP)", "total_oc_trx_cnts": "Transactions", "total_unq_subs": "Users"},
+        thresholds=[2, 4, 8, 15] # سلم أورانج كاش مخصص وحساس أكتر
+    )
+
+
+    render_alerts_center_ui(df)
+
+
+
+
+
+
+def OUG_VOICE_tab_alerts():
 
     df = get_dynamic_alerts(
         df_raw=OC_SERVICES_PER_DAY_HIST, 
