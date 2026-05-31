@@ -3372,7 +3372,7 @@ with main_tab_recharge:
 
 
 
-    tab_overall, tab_alerts, tab_alerts_v2 , tab_ibro , tab_network = st.tabs(["🌐 Overall View", "🔔 Alerts Center", "🎯 Contribution Alerts (V2)" , "🚀 IBRO" , "📡 Network Performance"])
+    tab_overall, tab_alerts, tab_alerts_v2 , tab_ibro , tab_network = st.tabs(["🌐 Overall View", "🔔 Alerts Center", "🎯 Segment Contribution Alerts" , "🚀 IBRO" , "📡 Network Performance"])
 
 
 
@@ -3513,7 +3513,7 @@ with main_tab_data:
 
 
 
-    tab_overall, tab_alerts, tab_alerts_v2 , tab_ibro , tab_network = st.tabs(["🌐 Overall View", "🔔 Alerts Center", "🎯 Contribution Alerts (V2)" , "🚀 IBRO" , "📡 Network Performance"])
+    tab_overall, tab_alerts, tab_alerts_v2 , tab_ibro , tab_network = st.tabs(["🌐 Overall View", "🔔 Alerts Center", "🎯 Segment Contribution Alerts" , "🚀 IBRO" , "📡 Network Performance"])
 
 
 
@@ -3670,7 +3670,7 @@ with main_tab_voice:
 
 
 
-    tab_overall, tab_alerts, tab_alerts_v2 , tab_ibro , tab_network = st.tabs(["🌐 Overall View", "🔔 Alerts Center", "🎯 Contribution Alerts (V2)" , "🚀 IBRO" , "📡 Network Performance"])
+    tab_overall, tab_alerts, tab_alerts_v2 , tab_ibro , tab_network = st.tabs(["🌐 Overall View", "🔔 Alerts Center", "🎯 Segment Contribution Alerts" , "🚀 IBRO" , "📡 Network Performance"])
 
 
 
@@ -3825,7 +3825,7 @@ with main_tab_oc:
 
 
 
-    tab_overall, tab_alerts, tab_alerts_v2 , tab_ibro , tab_network = st.tabs(["🌐 Overall View", "🔔 Alerts Center", "🎯 Contribution Alerts (V2)" , "🚀 IBRO" , "📡 Network Performance"])
+    tab_overall, tab_alerts, tab_alerts_v2 , tab_ibro , tab_network = st.tabs(["🌐 Overall View", "🔔 Alerts Center", "🎯 Segment Contribution Alerts" , "🚀 IBRO" , "📡 Network Performance"])
 
 
 
