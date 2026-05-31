@@ -1417,7 +1417,7 @@ def f_tab_dynamic_dashboard(
 # # LOAD NETWORK MODULE DATA
 # # =========================================================
 
-# #@st.cache_data(ttl=600)
+# #@st.cache_data(ttl=60)
 # def load_network_module_data(module_key):
 
 #     try:
@@ -1951,7 +1951,7 @@ NETWORK_MODULES = {
 
 
 
-@st.cache_data(ttl=600)
+@st.cache_data(ttl=60)
 def load_network_module_data(module_key):
 
     config = NETWORK_MODULES[module_key]
@@ -2429,7 +2429,7 @@ CASH_DIR     = "Data_Drive/orange_cash_module/"
 # Git Connection
 # =====================================================
 
-@st.cache_data(ttl=600)
+@st.cache_data(ttl=60)
 #@st.cache_data(ttl=60)
 def load_data():
     try:
@@ -2528,7 +2528,7 @@ def load_data():
 
 
 
-# #@st.cache_data(ttl=600)
+# #@st.cache_data(ttl=60)
 # def load_master_network_data():
 #     try:
 #         # قراءة ملف الباركيه الماستر الـ 18 ميجا المرفوع في الريبو
@@ -2545,7 +2545,7 @@ def load_data():
 
 #==========SUMMARY HEADER CARDS
 
-# #@st.cache_data(ttl=600)
+# #@st.cache_data(ttl=60)
 # def load_data():
 #     try:
 #         # قراءة ملف الباركيه الماستر الـ 18 ميجا المرفوع في الريبو
