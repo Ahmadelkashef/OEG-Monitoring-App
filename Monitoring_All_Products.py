@@ -3320,7 +3320,7 @@ with main_tab_recharge:
 
 
 
-    st.markdown('<div class="main-title">📊 Recharge Behavior Monitoring</div>', unsafe_allow_html=True)
+    st.markdown('<div class="main-title">🔋 Recharge Behavior Monitoring</div>', unsafe_allow_html=True)
 
     st.markdown("<br>", unsafe_allow_html=True)
 
@@ -3461,7 +3461,7 @@ with main_tab_data:
 
 
 
-    st.markdown('<div class="main-title">📊 Data Usage Monitoring Dashboard</div>', unsafe_allow_html=True)
+    st.markdown('<div class="main-title">📶 Data Usage Monitoring Dashboard</div>', unsafe_allow_html=True)
 
     st.markdown("<br>", unsafe_allow_html=True)
 
@@ -3617,7 +3617,7 @@ with main_tab_voice:
 
 
 
-    st.markdown('<div class="main-title">📊 OUG VOICE Usage Monitoring Dashboard</div>', unsafe_allow_html=True)
+    st.markdown('<div class="main-title">📞 OUG VOICE Usage Monitoring Dashboard</div>', unsafe_allow_html=True)
 
     st.markdown("<br>", unsafe_allow_html=True)
 
@@ -3773,7 +3773,7 @@ with main_tab_oc:
 
 
 
-    st.markdown('<div class="main-title">📊🍊 Orange Cash Monitoring Dashboard</div>', unsafe_allow_html=True)
+    st.markdown('<div class="main-title">💰 Orange Cash Monitoring Dashboard</div>', unsafe_allow_html=True)
 
     st.markdown("<br>", unsafe_allow_html=True)
 
